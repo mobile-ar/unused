@@ -19,6 +19,7 @@ Temporary Items
 
 # Xcode
 xcuserdata/
+xcshareddata/
 *.xcscmblueprint
 *.xccheckout
 *.moved-aside
@@ -40,25 +41,6 @@ build/
 Packages/
 Package.resolved
 .build/
-*.xcodeproj
-
-# CocoaPods
-Pods/
-Podfile.lock
-
-# Carthage
-Carthage/Build/
-Carthage/Checkouts/
-
-# fastlane
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output
-fastlane/README.md
-
-# Code Injection
-iOSInjectionProject/
 
 # Swift
 *.swp

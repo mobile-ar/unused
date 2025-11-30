@@ -14,18 +14,15 @@ class SwiftAnalyzer {
         let totalFiles = files.count
         
         // First pass: collect all declarations
-        print("\nCollecting declarations...".teal)
         for (index, file) in files.enumerated() {
-            printProgressBar(current: index + 1, total: totalFiles)
+            printProgressBar(prefix: "Collecting declarations...", current: index + 1, total: totalFiles)
             collectDeclarations(at: file)
         }
         print("")
-        
-        // Second pass: collect all usages
-        print("Collecting usages...".teal)
+        // Second pass: collect all usage
         for (index, file) in files.enumerated() {
-            printProgressBar(current: index + 1, total: totalFiles)
-            collectUsages(at: file)
+            printProgressBar(prefix: "Collecting usage...", current: index + 1, total: totalFiles)
+            collectUsage(at: file)
         }
         print("")
         
@@ -33,17 +30,17 @@ class SwiftAnalyzer {
         report()
     }
     
-    private func printProgressBar(current: Int, total: Int) {
+    private func printProgressBar(prefix: String, current: Int, total: Int) {
         let barLength = 50
         let progress = Double(current) / Double(total)
         let filledLength = Int(progress * Double(barLength))
         let emptyLength = barLength - filledLength
         
-        let filledBar = String(repeating: "█", count: filledLength)
-        let emptyBar = String(repeating: "░", count: emptyLength)
+        let filledBar = String(repeating: "█", count: filledLength).mauve
+        let emptyBar = String(repeating: "░", count: emptyLength).lavender
         let percentage = String(format: "%.1f", progress * 100)
         
-        print("\r  [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
+        print("\r \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
         fflush(stdout)
     }
     
@@ -59,7 +56,7 @@ class SwiftAnalyzer {
         declarations.append(contentsOf: visitor.declarations)
     }
     
-    private func collectUsages(at url: URL) {
+    private func collectUsage(at url: URL) {
         guard let source = try? String(contentsOf: url, encoding: .utf8) else {
             return
         }

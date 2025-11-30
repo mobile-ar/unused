@@ -5,22 +5,14 @@ import PackageDescription
 
 let package = Package(
     name: "unused",
-    platforms: [
-        .macOS(.v26)
-    ],
+    platforms: [.macOS(.v14)],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
-        .executable(
-            name: "unused",
-            targets: ["unused"]
-        ),
+        .executable(name: "unused", targets: ["unused"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-syntax.git", from: "602.0.0")
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
             name: "unused",
             dependencies: [
@@ -28,9 +20,6 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax")
             ]
         ),
-        .testTarget(
-            name: "unusedTests",
-            dependencies: ["unused"]
-        ),
+        .testTarget(name: "unusedTests", dependencies: ["unused"]),
     ]
 )

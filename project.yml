@@ -1,0 +1,37 @@
+# Xcode project configuration. Managed by https://github.com/yonaskolb/XcodeGen
+# Xcode is only used to build the release App Bundle. Debug builds only use Swift Package Manager
+
+name: unused
+
+packages:
+  unused:
+    path: .
+
+configs:
+  Debug: debug
+  Release: release
+
+targets:
+  unused:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    dependencies:
+      - package: unused
+    sources:
+      - Sources/unused
+    settings:
+      base:
+        SWIFT_VERSION: 6.2 # Swift Language Version
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: 0.0.1
+        INFOPLIST_KEY_LSUIElement: YES
+      configs:
+        Debug:
+          PRODUCT_NAME: unused-debug
+          PRODUCT_BUNDLE_IDENTIFIER: mobile-ar.unused.debug
+        Release:
+          PRODUCT_NAME: unused
+          PRODUCT_BUNDLE_IDENTIFIER: mobile-ar.unused
+          SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+          GCC_TREAT_WARNINGS_AS_ERRORS: YES
