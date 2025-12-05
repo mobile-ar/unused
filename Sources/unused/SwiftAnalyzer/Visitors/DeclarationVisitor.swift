@@ -3,6 +3,7 @@
 //
 
 import SwiftSyntax
+import SwiftParser
 
 class DeclarationVisitor: SyntaxVisitor {
 
@@ -12,10 +13,14 @@ class DeclarationVisitor: SyntaxVisitor {
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
     private var currentTypeProtocols: Set<String> = []
+    private let sourceFileContent: String
+    private let sourceLocationConverter: SourceLocationConverter
 
-    init(filePath: String, protocolRequirements: [String: Set<String>]) {
+    init(filePath: String, protocolRequirements: [String: Set<String>], sourceFileContent: String) {
         self.filePath = filePath
         self.protocolRequirements = protocolRequirements
+        self.sourceFileContent = sourceFileContent
+        self.sourceLocationConverter = SourceLocationConverter(fileName: filePath, tree: Parser.parse(source: sourceFileContent))
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -53,10 +58,14 @@ class DeclarationVisitor: SyntaxVisitor {
             }
         }
 
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+        
         declarations.append(Declaration(
             name: name,
             type: .function,
             file: filePath,
+            line: lineNumber,
             exclusionReason: exclusionReason,
             parentType: currentTypeName
         ))
@@ -79,10 +88,14 @@ class DeclarationVisitor: SyntaxVisitor {
                     }
                 }
 
+                let location = node.startLocation(converter: sourceLocationConverter)
+                let lineNumber = location.line
+                
                 declarations.append(Declaration(
                     name: name,
                     type: .variable,
                     file: filePath,
+                    line: lineNumber,
                     exclusionReason: exclusionReason,
                     parentType: currentTypeName
                 ))
@@ -97,10 +110,14 @@ class DeclarationVisitor: SyntaxVisitor {
         currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
         typeProtocolConformance[name] = currentTypeProtocols
 
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+        
         declarations.append(Declaration(
             name: name,
             type: .class,
             file: filePath,
+            line: lineNumber,
             exclusionReason: .none,
             parentType: nil
         ))
@@ -118,10 +135,14 @@ class DeclarationVisitor: SyntaxVisitor {
         currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
         typeProtocolConformance[name] = currentTypeProtocols
 
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+        
         declarations.append(Declaration(
             name: name,
             type: .class,
             file: filePath,
+            line: lineNumber,
             exclusionReason: .none,
             parentType: nil
         ))
@@ -139,10 +160,14 @@ class DeclarationVisitor: SyntaxVisitor {
         currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
         typeProtocolConformance[name] = currentTypeProtocols
 
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+        
         declarations.append(Declaration(
             name: name,
             type: .class,
             file: filePath,
+            line: lineNumber,
             exclusionReason: .none,
             parentType: nil
         ))

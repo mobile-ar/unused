@@ -38,7 +38,7 @@ struct InstallCompletions: ParsableCommand {
                 try installFishCompletions(homeDir: homeDir)
             }
         } catch {
-            print("! Installation failed: \(error)".red)
+            print("⚠ Installation failed: \(error)".red)
             throw ExitCode.failure
         }
     }

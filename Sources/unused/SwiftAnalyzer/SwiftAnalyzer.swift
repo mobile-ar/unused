@@ -82,7 +82,8 @@ class SwiftAnalyzer {
         let sourceFile = Parser.parse(source: source)
         let visitor = DeclarationVisitor(
             filePath: url.path,
-            protocolRequirements: protocolRequirements
+            protocolRequirements: protocolRequirements,
+            sourceFileContent: source
         )
         visitor.walk(sourceFile)
         declarations.append(contentsOf: visitor.declarations)
@@ -156,7 +157,7 @@ class SwiftAnalyzer {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctions {
                 let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky + reason)
+                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
         }
         
@@ -164,14 +165,14 @@ class SwiftAnalyzer {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariables {
                 let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky + reason)
+                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
         }
         
         if !unusedClasses.isEmpty {
             print("\nUnused Classes:".pink.bold)
             for item in unusedClasses {
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
         
@@ -193,21 +194,21 @@ class SwiftAnalyzer {
                 if !excludedOverrides.isEmpty {
                     print("\n  Overrides:".peach)
                     for item in excludedOverrides {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
                 
                 if !excludedProtocols.isEmpty {
                     print("\n  Protocol Implementations:".mauve)
                     for item in excludedProtocols {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
                 
                 if !excludedObjc.isEmpty {
                     print("\n  @objc/@IBAction/@IBOutlet:".pink)
                     for item in excludedObjc {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
             }
