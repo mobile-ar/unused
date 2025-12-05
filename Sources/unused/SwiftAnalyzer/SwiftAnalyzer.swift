@@ -10,6 +10,7 @@ struct AnalyzerOptions {
     var includeOverrides: Bool = false
     var includeProtocols: Bool = false
     var includeObjc: Bool = false
+    var showExcluded: Bool = false
     
     init(arguments: [String] = CommandLine.arguments) {
         for arg in arguments {
@@ -20,6 +21,8 @@ struct AnalyzerOptions {
                 includeProtocols = true
             case "--include-objc":
                 includeObjc = true
+            case "--show-excluded":
+                showExcluded = true
             default:
                 break
             }
@@ -160,18 +163,18 @@ class SwiftAnalyzer {
             shouldInclude($0)
         }
         
-        // Count excluded items
+        // Get excluded items
         let excludedOverrides = declarations.filter { 
             $0.exclusionReason == .override && !options.includeOverrides
-        }.count
+        }
         let excludedProtocols = declarations.filter { 
             $0.exclusionReason == .protocolImplementation && !options.includeProtocols
-        }.count
+        }
         let excludedObjc = declarations.filter { 
             ($0.exclusionReason == .objcAttribute || 
              $0.exclusionReason == .ibAction || 
              $0.exclusionReason == .ibOutlet) && !options.includeObjc
-        }.count
+        }
         
         if !unusedFunctions.isEmpty {
             print("\nUnused Functions:".peach.bold)
@@ -197,19 +200,46 @@ class SwiftAnalyzer {
         }
         
         // Show exclusion summary
-        let totalExcluded = excludedOverrides + excludedProtocols + excludedObjc
+        let totalExcluded = excludedOverrides.count + excludedProtocols.count + excludedObjc.count
         if totalExcluded > 0 {
             print("\nExcluded from results:".teal.bold)
-            if excludedOverrides > 0 {
-                print("  - ".overlay0 + "\(excludedOverrides)".yellow + " override(s)".subtext0)
+            if !excludedOverrides.isEmpty {
+                print("  - ".overlay0 + "\(excludedOverrides.count)".yellow + " override(s)".subtext0)
             }
-            if excludedProtocols > 0 {
-                print("  - ".overlay0 + "\(excludedProtocols)".yellow + " protocol implementation(s)".subtext0)
+            if !excludedProtocols.isEmpty {
+                print("  - ".overlay0 + "\(excludedProtocols.count)".yellow + " protocol implementation(s)".subtext0)
             }
-            if excludedObjc > 0 {
-                print("  - ".overlay0 + "\(excludedObjc)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            if !excludedObjc.isEmpty {
+                print("  - ".overlay0 + "\(excludedObjc.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
             }
+            
+            if options.showExcluded {
+                if !excludedOverrides.isEmpty {
+                    print("\n  Overrides:".peach)
+                    for item in excludedOverrides {
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                    }
+                }
+                
+                if !excludedProtocols.isEmpty {
+                    print("\n  Protocol Implementations:".mauve)
+                    for item in excludedProtocols {
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                    }
+                }
+                
+                if !excludedObjc.isEmpty {
+                    print("\n  @objc/@IBAction/@IBOutlet:".pink)
+                    for item in excludedObjc {
+                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                    }
+                }
+            }
+            
             print("\nUse --include-overrides, --include-protocols, or --include-objc to include these in results.".gray)
+            if !options.showExcluded {
+                print("Use --show-excluded to see the list of excluded items.".gray)
+            }
         }
         
         if unusedFunctions.isEmpty && unusedVariables.isEmpty && unusedClasses.isEmpty {

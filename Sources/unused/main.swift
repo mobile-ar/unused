@@ -16,6 +16,7 @@ if arguments.contains("--help") || arguments.contains("-h") {
       --include-overrides    Include override methods in the results
       --include-protocols    Include protocol implementations in the results
       --include-objc         Include @objc/@IBAction/@IBOutlet items in the results
+      --show-excluded        Show detailed list of all excluded items
       --help, -h             Show this help message
     
     By default, overrides, protocol implementations, and framework callbacks are
