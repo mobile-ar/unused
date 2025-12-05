@@ -6,20 +6,56 @@ import Foundation
 import SwiftSyntax
 import SwiftParser
 
+struct AnalyzerOptions {
+    var includeOverrides: Bool = false
+    var includeProtocols: Bool = false
+    var includeObjc: Bool = false
+    
+    init(arguments: [String] = CommandLine.arguments) {
+        for arg in arguments {
+            switch arg {
+            case "--include-overrides":
+                includeOverrides = true
+            case "--include-protocols":
+                includeProtocols = true
+            case "--include-objc":
+                includeObjc = true
+            default:
+                break
+            }
+        }
+    }
+}
+
 class SwiftAnalyzer {
     private var declarations: [Declaration] = []
     private var usedIdentifiers = Set<String>()
+    private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
+    private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
+    private let options: AnalyzerOptions
+    
+    init(options: AnalyzerOptions = AnalyzerOptions()) {
+        self.options = options
+    }
     
     func analyzeFiles(_ files: [URL]) {
         let totalFiles = files.count
         
-        // First pass: collect all declarations
+        // First pass: collect protocol requirements
+        for (index, file) in files.enumerated() {
+            printProgressBar(prefix: "Analyzing protocols...", current: index + 1, total: totalFiles)
+            collectProtocols(at: file)
+        }
+        print("")
+        
+        // Second pass: collect all declarations
         for (index, file) in files.enumerated() {
             printProgressBar(prefix: "Collecting declarations...", current: index + 1, total: totalFiles)
             collectDeclarations(at: file)
         }
         print("")
-        // Second pass: collect all usage
+        
+        // Third pass: collect all usage
         for (index, file) in files.enumerated() {
             printProgressBar(prefix: "Collecting usage...", current: index + 1, total: totalFiles)
             collectUsage(at: file)
@@ -44,6 +80,20 @@ class SwiftAnalyzer {
         fflush(stdout)
     }
     
+    private func collectProtocols(at url: URL) {
+        guard let source = try? String(contentsOf: url, encoding: .utf8) else {
+            return
+        }
+        
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        
+        for (protocolName, methods) in visitor.protocolRequirements {
+            protocolRequirements[protocolName, default: Set()].formUnion(methods)
+        }
+    }
+    
     private func collectDeclarations(at url: URL) {
         guard let source = try? String(contentsOf: url, encoding: .utf8) else {
             print("Error reading file: \(url.path)".red.bold)
@@ -51,9 +101,17 @@ class SwiftAnalyzer {
         }
         
         let sourceFile = Parser.parse(source: source)
-        let visitor = DeclarationVisitor(filePath: url.path)
+        let visitor = DeclarationVisitor(
+            filePath: url.path,
+            protocolRequirements: protocolRequirements
+        )
         visitor.walk(sourceFile)
         declarations.append(contentsOf: visitor.declarations)
+        
+        // Merge type conformance information
+        for (typeName, protocols) in visitor.typeProtocolConformance {
+            typeProtocolConformance[typeName, default: Set()].formUnion(protocols)
+        }
     }
     
     private func collectUsage(at url: URL) {
@@ -67,22 +125,67 @@ class SwiftAnalyzer {
         usedIdentifiers.formUnion(visitor.usedIdentifiers)
     }
     
+    private func shouldInclude(_ declaration: Declaration) -> Bool {
+        guard declaration.shouldExcludeByDefault else {
+            return true // Not excluded by default, include it
+        }
+        
+        // Check if user wants to include it despite default exclusion
+        switch declaration.exclusionReason {
+        case .override:
+            return options.includeOverrides
+        case .protocolImplementation:
+            return options.includeProtocols
+        case .objcAttribute, .ibAction, .ibOutlet:
+            return options.includeObjc
+        case .none:
+            return true
+        }
+    }
+    
     private func report() {
-        let unusedFunctions = declarations.filter { $0.type == .function && !usedIdentifiers.contains($0.name) }
-        let unusedVariables = declarations.filter { $0.type == .variable && !usedIdentifiers.contains($0.name) }
-        let unusedClasses = declarations.filter { $0.type == .class && !usedIdentifiers.contains($0.name) }
+        let unusedFunctions = declarations.filter { 
+            $0.type == .function && 
+            !usedIdentifiers.contains($0.name) &&
+            shouldInclude($0)
+        }
+        let unusedVariables = declarations.filter { 
+            $0.type == .variable && 
+            !usedIdentifiers.contains($0.name) &&
+            shouldInclude($0)
+        }
+        let unusedClasses = declarations.filter { 
+            $0.type == .class && 
+            !usedIdentifiers.contains($0.name) &&
+            shouldInclude($0)
+        }
+        
+        // Count excluded items
+        let excludedOverrides = declarations.filter { 
+            $0.exclusionReason == .override && !options.includeOverrides
+        }.count
+        let excludedProtocols = declarations.filter { 
+            $0.exclusionReason == .protocolImplementation && !options.includeProtocols
+        }.count
+        let excludedObjc = declarations.filter { 
+            ($0.exclusionReason == .objcAttribute || 
+             $0.exclusionReason == .ibAction || 
+             $0.exclusionReason == .ibOutlet) && !options.includeObjc
+        }.count
         
         if !unusedFunctions.isEmpty {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctions {
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
+                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky + reason)
             }
         }
         
         if !unusedVariables.isEmpty {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariables {
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky)
+                let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
+                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file)".sky + reason)
             }
         }
         
@@ -93,24 +196,117 @@ class SwiftAnalyzer {
             }
         }
         
-        if unusedFunctions.isEmpty && unusedVariables.isEmpty && unusedClasses.isEmpty {
-            print("\nNo unused code found!".green.bold)
+        // Show exclusion summary
+        let totalExcluded = excludedOverrides + excludedProtocols + excludedObjc
+        if totalExcluded > 0 {
+            print("\nExcluded from results:".teal.bold)
+            if excludedOverrides > 0 {
+                print("  - ".overlay0 + "\(excludedOverrides)".yellow + " override(s)".subtext0)
+            }
+            if excludedProtocols > 0 {
+                print("  - ".overlay0 + "\(excludedProtocols)".yellow + " protocol implementation(s)".subtext0)
+            }
+            if excludedObjc > 0 {
+                print("  - ".overlay0 + "\(excludedObjc)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            }
+            print("\nUse --include-overrides, --include-protocols, or --include-objc to include these in results.".gray)
         }
+        
+        if unusedFunctions.isEmpty && unusedVariables.isEmpty && unusedClasses.isEmpty {
+            if totalExcluded > 0 {
+                print("\nNo unused code found (excluding \(totalExcluded) override/protocol/framework items)!".green.bold)
+            } else {
+                print("\nNo unused code found!".green.bold)
+            }
+        }
+    }
+    
+    private func reasonDescription(_ reason: ExclusionReason) -> String {
+        switch reason {
+        case .override: return "override"
+        case .protocolImplementation: return "protocol"
+        case .objcAttribute: return "@objc"
+        case .ibAction: return "@IBAction"
+        case .ibOutlet: return "@IBOutlet"
+        case .none: return ""
+        }
+    }
+}
+
+class ProtocolVisitor: SyntaxVisitor {
+    var protocolRequirements: [String: Set<String>] = [:]
+    
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        let protocolName = node.name.text
+        var methods = Set<String>()
+        
+        // Collect all method requirements in the protocol
+        for member in node.memberBlock.members {
+            if let funcDecl = member.decl.as(FunctionDeclSyntax.self) {
+                methods.insert(funcDecl.name.text)
+            }
+        }
+        
+        protocolRequirements[protocolName] = methods
+        return .visitChildren
     }
 }
 
 class DeclarationVisitor: SyntaxVisitor {
     var declarations: [Declaration] = []
+    var typeProtocolConformance: [String: Set<String>] = [:]
     let filePath: String
+    let protocolRequirements: [String: Set<String>]
+    private var currentTypeName: String?
+    private var currentTypeProtocols: Set<String> = []
     
-    init(filePath: String) {
+    init(filePath: String, protocolRequirements: [String: Set<String>]) {
         self.filePath = filePath
+        self.protocolRequirements = protocolRequirements
         super.init(viewMode: .sourceAccurate)
     }
     
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        declarations.append(Declaration(name: name, type: .function, file: filePath))
+        var exclusionReason: ExclusionReason = .none
+        
+        // Check for override keyword
+        if node.modifiers.contains(where: { $0.name.text == "override" }) {
+            exclusionReason = .override
+        }
+        
+        // Check for @objc, @IBAction attributes
+        for attribute in node.attributes {
+            if case .attribute(let attr) = attribute {
+                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                switch attrName {
+                case "objc":
+                    exclusionReason = .objcAttribute
+                case "IBAction":
+                    exclusionReason = .ibAction
+                default:
+                    break
+                }
+            }
+        }
+        
+        // Check if this is a protocol implementation
+        if exclusionReason == .none, currentTypeName != nil {
+            for protocolName in currentTypeProtocols {
+                if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
+                    exclusionReason = .protocolImplementation
+                    break
+                }
+            }
+        }
+        
+        declarations.append(Declaration(
+            name: name,
+            type: .function,
+            file: filePath,
+            exclusionReason: exclusionReason,
+            parentType: currentTypeName
+        ))
         return .visitChildren
     }
     
@@ -118,7 +314,25 @@ class DeclarationVisitor: SyntaxVisitor {
         for binding in node.bindings {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                 let name = identifier.identifier.text
-                declarations.append(Declaration(name: name, type: .variable, file: filePath))
+                var exclusionReason: ExclusionReason = .none
+                
+                // Check for @IBOutlet
+                for attribute in node.attributes {
+                    if case .attribute(let attr) = attribute {
+                        let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                        if attrName == "IBOutlet" {
+                            exclusionReason = .ibOutlet
+                        }
+                    }
+                }
+                
+                declarations.append(Declaration(
+                    name: name,
+                    type: .variable,
+                    file: filePath,
+                    exclusionReason: exclusionReason,
+                    parentType: currentTypeName
+                ))
             }
         }
         return .visitChildren
@@ -126,20 +340,78 @@ class DeclarationVisitor: SyntaxVisitor {
     
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        declarations.append(Declaration(name: name, type: .class, file: filePath))
+        currentTypeName = name
+        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
+        typeProtocolConformance[name] = currentTypeProtocols
+        
+        declarations.append(Declaration(
+            name: name,
+            type: .class,
+            file: filePath,
+            exclusionReason: .none,
+            parentType: nil
+        ))
         return .visitChildren
+    }
+    
+    override func visitPost(_ node: ClassDeclSyntax) {
+        currentTypeName = nil
+        currentTypeProtocols = []
     }
     
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        declarations.append(Declaration(name: name, type: .class, file: filePath))
+        currentTypeName = name
+        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
+        typeProtocolConformance[name] = currentTypeProtocols
+        
+        declarations.append(Declaration(
+            name: name,
+            type: .class,
+            file: filePath,
+            exclusionReason: .none,
+            parentType: nil
+        ))
         return .visitChildren
+    }
+    
+    override func visitPost(_ node: StructDeclSyntax) {
+        currentTypeName = nil
+        currentTypeProtocols = []
     }
     
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        declarations.append(Declaration(name: name, type: .class, file: filePath))
+        currentTypeName = name
+        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
+        typeProtocolConformance[name] = currentTypeProtocols
+        
+        declarations.append(Declaration(
+            name: name,
+            type: .class,
+            file: filePath,
+            exclusionReason: .none,
+            parentType: nil
+        ))
         return .visitChildren
+    }
+    
+    override func visitPost(_ node: EnumDeclSyntax) {
+        currentTypeName = nil
+        currentTypeProtocols = []
+    }
+    
+    private func extractProtocols(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
+        var protocols = Set<String>()
+        guard let clause = inheritanceClause else { return protocols }
+        
+        for inherited in clause.inheritedTypes {
+            if let typeName = inherited.type.as(IdentifierTypeSyntax.self)?.name.text {
+                protocols.insert(typeName)
+            }
+        }
+        
+        return protocols
     }
 }
 
@@ -166,11 +438,4 @@ class UsageVisitor: SyntaxVisitor {
         usedIdentifiers.insert(node.declName.baseName.text)
         return .visitChildren
     }
-    
-//    override func visit(_ node: TypeSyntax) -> SyntaxVisitorContinueKind {
-//        if let identType = node.as(IdentifierTypeSyntax.self) {
-//            usedIdentifiers.insert(identType.name.text)
-//        }
-//        return .visitChildren
-//    }
 }
