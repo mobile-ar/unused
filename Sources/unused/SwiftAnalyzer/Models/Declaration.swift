@@ -18,13 +18,15 @@ enum ExclusionReason {
 }
 
 struct Declaration {
+
     let name: String
     let type: DeclarationType
     let file: String
     let exclusionReason: ExclusionReason
     let parentType: String? // For tracking which class/struct the declaration belongs to
-    
+
     var shouldExcludeByDefault: Bool {
         return exclusionReason != .none
     }
+
 }

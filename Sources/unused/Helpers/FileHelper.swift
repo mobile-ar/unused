@@ -1,5 +1,5 @@
 //
-//  Created by Fernando Romiti on 30/11/2025.
+//  Created by Fernando Romiti on 5/12/2025.
 //
 
 import Foundation
@@ -14,6 +14,6 @@ func getSwiftFiles(in directory: URL) -> [URL] {
             swiftFiles.append(element)
         }
     }
-    
+
     return swiftFiles
 }
