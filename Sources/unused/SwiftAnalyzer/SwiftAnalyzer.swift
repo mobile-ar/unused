@@ -153,11 +153,17 @@ class SwiftAnalyzer {
              $0.exclusionReason == .ibOutlet) && !options.includeObjc
         }
         
+        let totalFindings = unusedFunctions.count + unusedVariables.count + unusedClasses.count
+        let idWidth = String(totalFindings).count
+        var currentId = 1
+        
         if !unusedFunctions.isEmpty {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctions {
                 let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                let idString = String(format: "%\(idWidth)d", currentId)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                currentId += 1
             }
         }
         
@@ -165,14 +171,18 @@ class SwiftAnalyzer {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariables {
                 let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                let idString = String(format: "%\(idWidth)d", currentId)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                currentId += 1
             }
         }
         
         if !unusedClasses.isEmpty {
             print("\nUnused Classes:".pink.bold)
             for item in unusedClasses {
-                print("  - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                let idString = String(format: "%\(idWidth)d", currentId)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                currentId += 1
             }
         }
         
