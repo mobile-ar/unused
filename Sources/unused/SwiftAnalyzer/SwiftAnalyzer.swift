@@ -12,9 +12,11 @@ class SwiftAnalyzer {
     private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
     private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
     private let options: AnalyzerOptions
+    private let directory: String
     
-    init(options: AnalyzerOptions = AnalyzerOptions()) {
+    init(options: AnalyzerOptions = AnalyzerOptions(), directory: String) {
         self.options = options
+        self.directory = directory
     }
     
     func analyzeFiles(_ files: [URL]) {
@@ -42,7 +44,14 @@ class SwiftAnalyzer {
         print("")
         
         // Report
-        report()
+        let report = report()
+        
+        // Write to CSV
+        do {
+            try CSVWriter.write(report: report, to: directory)
+        } catch {
+            print("Error writing .unused file: \(error)".red.bold)
+        }
     }
     
     private func printProgressBar(prefix: String, current: Int, total: Int) {
@@ -123,7 +132,7 @@ class SwiftAnalyzer {
         }
     }
     
-    private func report() {
+    private func report() -> [Declaration] {
         let unusedFunctions = declarations.filter { 
             $0.type == .function && 
             !usedIdentifiers.contains($0.name) &&
@@ -236,6 +245,8 @@ class SwiftAnalyzer {
                 print("\nNo unused code found!".green.bold)
             }
         }
+        
+        return unusedFunctions + unusedVariables + unusedClasses
     }
     
     private func reasonDescription(_ reason: ExclusionReason) -> String {

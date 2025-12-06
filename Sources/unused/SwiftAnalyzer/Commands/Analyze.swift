@@ -1,7 +1,4 @@
 //
-//  Analyze.swift
-//  unused
-//
 //  Created by Fernando Romiti on 05/12/2025.
 //
 
@@ -51,7 +48,7 @@ struct Analyze: ParsableCommand {
             includeObjc: includeObjc,
             showExcluded: showExcluded
         )
-        let analyzer = SwiftAnalyzer(options: options)
+        let analyzer = SwiftAnalyzer(options: options, directory: directory)
         analyzer.analyzeFiles(swiftFiles)
     }
 

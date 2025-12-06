@@ -1,7 +1,4 @@
 //
-//  GenerateCompletionScript.swift
-//  unused
-//
 //  Created by Fernando Romiti on 05/12/2025.
 //
 

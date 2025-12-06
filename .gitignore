@@ -77,3 +77,6 @@ playground.xcworkspace
 .env
 .env.local
 .env.*.local
+
+# Unused
+.unused

@@ -10,7 +10,7 @@ struct Unused: ParsableCommand {
         commandName: "unused",
         abstract: "Find unused Swift declarations in your codebase",
         version: "0.0.1",
-        subcommands: [Analyze.self, InstallCompletions.self, GenerateCompletionScript.self],
+        subcommands: [Analyze.self, Open.self, InstallCompletions.self, GenerateCompletionScript.self],
         defaultSubcommand: Analyze.self
     )
 
