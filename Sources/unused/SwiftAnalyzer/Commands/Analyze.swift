@@ -27,6 +27,8 @@ struct Analyze: ParsableCommand {
     var showExcluded: Bool = false
 
     func run() throws {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
         print("Unused v\(Unused.configuration.version)".blue.bold)
         print("Running unused ...")
 
@@ -50,6 +52,10 @@ struct Analyze: ParsableCommand {
         )
         let analyzer = SwiftAnalyzer(options: options, directory: directory)
         analyzer.analyzeFiles(swiftFiles)
+        
+        let endTime = CFAbsoluteTimeGetCurrent()
+        let totalTime = endTime - startTime
+        print("\nTotal processing time: \(String(format: "%.2f", totalTime))s".green.bold)
     }
 
 }
