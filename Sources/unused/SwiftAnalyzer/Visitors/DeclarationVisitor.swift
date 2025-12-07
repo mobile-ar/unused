@@ -13,6 +13,8 @@ class DeclarationVisitor: SyntaxVisitor {
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
     private var currentTypeProtocols: Set<String> = []
+    private var insideProtocol: Bool = false
+    private var typeContextStack: [(name: String?, protocols: Set<String>)] = []
     private let sourceFileContent: String
     private let sourceLocationConverter: SourceLocationConverter
 
@@ -25,6 +27,10 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+        
         let name = node.name.text
         var exclusionReason: ExclusionReason = .none
 
@@ -73,6 +79,10 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+        
         for binding in node.bindings {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                 let name = identifier.identifier.text
@@ -106,9 +116,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        currentTypeName = name
-        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
-        typeProtocolConformance[name] = currentTypeProtocols
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
@@ -125,15 +133,12 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visitPost(_ node: ClassDeclSyntax) {
-        currentTypeName = nil
-        currentTypeProtocols = []
+        popTypeContext()
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        currentTypeName = name
-        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
-        typeProtocolConformance[name] = currentTypeProtocols
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
@@ -150,15 +155,12 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visitPost(_ node: StructDeclSyntax) {
-        currentTypeName = nil
-        currentTypeProtocols = []
+        popTypeContext()
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
-        currentTypeName = name
-        currentTypeProtocols = extractProtocols(from: node.inheritanceClause)
-        typeProtocolConformance[name] = currentTypeProtocols
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
@@ -175,10 +177,61 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visitPost(_ node: EnumDeclSyntax) {
-        currentTypeName = nil
-        currentTypeProtocols = []
+        popTypeContext()
+    }
+    
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        insideProtocol = true
+        return .visitChildren
+    }
+    
+    override func visitPost(_ node: ProtocolDeclSyntax) {
+        insideProtocol = false
     }
 
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        let name = extractTypeName(from: node.extendedType)
+        let protocols = extractProtocols(from: node.inheritanceClause)
+        
+        pushTypeContext(name: name, protocols: protocols)
+        
+        if !protocols.isEmpty {
+            typeProtocolConformance[name, default: Set()].formUnion(protocols)
+        }
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ExtensionDeclSyntax) {
+        popTypeContext()
+    }
+    
+    private func pushTypeContext(name: String, protocols: Set<String>) {
+        typeContextStack.append((name: currentTypeName, protocols: currentTypeProtocols))
+        currentTypeName = name
+        currentTypeProtocols = protocols
+        
+        if !protocols.isEmpty {
+            typeProtocolConformance[name, default: Set()].formUnion(protocols)
+        }
+    }
+    
+    private func popTypeContext() {
+        if let previous = typeContextStack.popLast() {
+            currentTypeName = previous.name
+            currentTypeProtocols = previous.protocols
+        } else {
+            currentTypeName = nil
+            currentTypeProtocols = []
+        }
+    }
+
+    private func extractTypeName(from type: TypeSyntax) -> String {
+        if let identifierType = type.as(IdentifierTypeSyntax.self) {
+            return identifierType.name.text
+        }
+        return type.trimmedDescription
+    }
+    
     private func extractProtocols(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
         var protocols = Set<String>()
         guard let clause = inheritanceClause else { return protocols }
