@@ -29,4 +29,26 @@ class UsageVisitor: SyntaxVisitor {
         return .visitChildren
     }
 
+    override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+        if let operatorToken = node.operator.as(BinaryOperatorExprSyntax.self) {
+            usedIdentifiers.insert(operatorToken.operator.text)
+        }
+        return .visitChildren
+    }
+
+    override func visit(_ node: BinaryOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+        usedIdentifiers.insert(node.operator.text)
+        return .visitChildren
+    }
+
+    override func visit(_ node: PrefixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+        usedIdentifiers.insert(node.operator.text)
+        return .visitChildren
+    }
+
+    override func visit(_ node: PostfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+        usedIdentifiers.insert(node.operator.text)
+        return .visitChildren
+    }
+
 }
