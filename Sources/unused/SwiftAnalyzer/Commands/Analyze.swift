@@ -35,9 +35,9 @@ struct Analyze: ParsableCommand {
         let directoryURL = URL(fileURLWithPath: directory)
 
         // Check if directory exists
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
+        guard let resourceValues = try? directoryURL.resourceValues(forKeys: [.isDirectoryKey]),
+              let isDirectory = resourceValues.isDirectory,
+              isDirectory else {
             throw ValidationError("Directory does not exist: \(directory)")
         }
 
