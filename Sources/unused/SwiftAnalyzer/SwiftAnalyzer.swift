@@ -133,18 +133,18 @@ class SwiftAnalyzer {
     }
     
     private func report() -> [Declaration] {
-        let unusedFunctions = declarations.filter { 
-            $0.type == .function && 
+        let unusedFunctions = declarations.filter {
+            $0.type == .function &&
             !usedIdentifiers.contains($0.name) &&
             shouldInclude($0)
         }
-        let unusedVariables = declarations.filter { 
-            $0.type == .variable && 
+        let unusedVariables = declarations.filter {
+            $0.type == .variable &&
             !usedIdentifiers.contains($0.name) &&
             shouldInclude($0)
         }
-        let unusedClasses = declarations.filter { 
-            $0.type == .class && 
+        let unusedClasses = declarations.filter {
+            $0.type == .class &&
             !usedIdentifiers.contains($0.name) &&
             shouldInclude($0)
         }

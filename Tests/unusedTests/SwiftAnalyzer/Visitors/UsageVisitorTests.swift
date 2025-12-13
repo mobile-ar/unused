@@ -249,4 +249,62 @@ struct UsageVisitorTests {
         
         #expect(visitor.usedIdentifiers.contains("name"))
     }
+
+    @Test
+    func testTypeAnnotationTracking() throws {
+        let source = """
+        enum Shell: String {
+            case bash, zsh, fish
+        }
+        
+        struct Command {
+            var shell: Shell = .bash
+        }
+        """
+        
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+        
+        #expect(visitor.usedIdentifiers.contains("Shell"))
+        #expect(visitor.usedIdentifiers.contains("String"))
+    }
+
+    @Test
+    func testTypeAnnotationInFunctionParameters() throws {
+        let source = """
+        enum Color {
+            case red, green, blue
+        }
+        
+        func setColor(_ color: Color) {
+            print(color)
+        }
+        """
+        
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+        
+        #expect(visitor.usedIdentifiers.contains("Color"))
+    }
+
+    @Test
+    func testTypeAnnotationInReturnType() throws {
+        let source = """
+        enum Status {
+            case active, inactive
+        }
+        
+        func getStatus() -> Status {
+            return .active
+        }
+        """
+        
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+        
+        #expect(visitor.usedIdentifiers.contains("Status"))
+    }
 }
