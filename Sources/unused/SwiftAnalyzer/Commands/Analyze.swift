@@ -26,6 +26,9 @@ struct Analyze: ParsableCommand {
     @Flag(name: .long, help: "Show detailed list of all excluded items")
     var showExcluded: Bool = false
 
+    @Flag(name: .long, help: "Include test files in the analysis")
+    var includeTests: Bool = false
+
     func run() throws {
         let startTime = CFAbsoluteTimeGetCurrent()
         
@@ -41,14 +44,15 @@ struct Analyze: ParsableCommand {
             throw ValidationError("Directory does not exist: \(directory)")
         }
 
-        let swiftFiles = getSwiftFiles(in: directoryURL)
+        let swiftFiles = getSwiftFiles(in: directoryURL, includeTests: includeTests)
         print("Found \(swiftFiles.count) Swift files".teal)
 
         let options = AnalyzerOptions(
             includeOverrides: includeOverrides,
             includeProtocols: includeProtocols,
             includeObjc: includeObjc,
-            showExcluded: showExcluded
+            showExcluded: showExcluded,
+            includeTests: includeTests
         )
         let analyzer = SwiftAnalyzer(options: options, directory: directory)
         analyzer.analyzeFiles(swiftFiles)

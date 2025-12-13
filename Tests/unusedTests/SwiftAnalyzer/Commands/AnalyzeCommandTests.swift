@@ -335,4 +335,123 @@ struct AnalyzeCommandTests {
         #expect(csvContent.contains("functionInFile2"))
     }
     
+    @Test func testGetSwiftFilesExcludesTestsByDefault() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        try "// regular file".write(to: regularFile, atomically: true, encoding: .utf8)
+        
+        let testFile = tempDir.appendingPathComponent("RegularTests.swift")
+        try "// test file".write(to: testFile, atomically: true, encoding: .utf8)
+        
+        let testsDir = tempDir.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
+        try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
+        
+        let files = getSwiftFiles(in: tempDir, includeTests: false)
+        
+        #expect(files.count == 1)
+        #expect(files.first?.lastPathComponent == "Regular.swift")
+    }
+    
+    @Test func testGetSwiftFilesIncludesTestsWhenFlagSet() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        try "// regular file".write(to: regularFile, atomically: true, encoding: .utf8)
+        
+        let testFile = tempDir.appendingPathComponent("RegularTests.swift")
+        try "// test file".write(to: testFile, atomically: true, encoding: .utf8)
+        
+        let testsDir = tempDir.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
+        try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
+        
+        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        
+        #expect(files.count == 3)
+    }
+    
+    @Test func testIsTestFileDetectsTestFiles() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        #expect(!isTestFile(regularFile))
+        
+        let testFile = tempDir.appendingPathComponent("RegularTest.swift")
+        #expect(isTestFile(testFile))
+        
+        let testsFile = tempDir.appendingPathComponent("RegularTests.swift")
+        #expect(isTestFile(testsFile))
+        
+        let testsDir = tempDir.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        let fileInTestsDir = testsDir.appendingPathComponent("SomeFile.swift")
+        #expect(isTestFile(fileInTestsDir))
+    }
+    
+    @Test func testAnalyzeWithIncludeTestsOption() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        let regularContent = """
+        func usedFunction() {
+            print("used")
+        }
+        
+        func unusedFunction() {
+            print("unused")
+        }
+        """
+        try regularContent.write(to: regularFile, atomically: true, encoding: .utf8)
+        
+        let testFile = tempDir.appendingPathComponent("RegularTests.swift")
+        let testContent = """
+        func testFunction() {
+            usedFunction()
+        }
+        
+        func unusedTestHelper() {
+            print("unused test helper")
+        }
+        """
+        try testContent.write(to: testFile, atomically: true, encoding: .utf8)
+        
+        let optionsWithoutTests = AnalyzerOptions(includeTests: false)
+        let analyzerWithoutTests = SwiftAnalyzer(options: optionsWithoutTests, directory: tempDir.path)
+        let filesWithoutTests = getSwiftFiles(in: tempDir, includeTests: false)
+        analyzerWithoutTests.analyzeFiles(filesWithoutTests)
+        
+        #expect(filesWithoutTests.count == 1)
+        
+        let optionsWithTests = AnalyzerOptions(includeTests: true)
+        let analyzerWithTests = SwiftAnalyzer(options: optionsWithTests, directory: tempDir.path)
+        let filesWithTests = getSwiftFiles(in: tempDir, includeTests: true)
+        analyzerWithTests.analyzeFiles(filesWithTests)
+        
+        #expect(filesWithTests.count == 2)
+    }
+    
 }

@@ -197,7 +197,9 @@ class SwiftAnalyzer {
         
         // Show exclusion summary
         let totalExcluded = excludedOverrides.count + excludedProtocols.count + excludedObjc.count
-        if totalExcluded > 0 {
+        let testFileCount = countExcludedTestFiles()
+        
+        if totalExcluded > 0 || testFileCount > 0 {
             print("\nExcluded from results:".teal.bold)
             if !excludedOverrides.isEmpty {
                 print("  - ".overlay0 + "\(excludedOverrides.count)".yellow + " override(s)".subtext0)
@@ -207,6 +209,9 @@ class SwiftAnalyzer {
             }
             if !excludedObjc.isEmpty {
                 print("  - ".overlay0 + "\(excludedObjc.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            }
+            if testFileCount > 0 {
+                print("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
             }
             
             if options.showExcluded {
@@ -232,7 +237,23 @@ class SwiftAnalyzer {
                 }
             }
             
-            print("\nUse --include-overrides, --include-protocols, or --include-objc to include these in results.".gray)
+            var flags: [String] = []
+            if !options.includeOverrides && !excludedOverrides.isEmpty {
+                flags.append("--include-overrides")
+            }
+            if !options.includeProtocols && !excludedProtocols.isEmpty {
+                flags.append("--include-protocols")
+            }
+            if !options.includeObjc && !excludedObjc.isEmpty {
+                flags.append("--include-objc")
+            }
+            if !options.includeTests && testFileCount > 0 {
+                flags.append("--include-tests")
+            }
+            
+            if !flags.isEmpty {
+                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".gray)
+            }
             if !options.showExcluded {
                 print("Use --show-excluded to see the list of excluded items.".gray)
             }
@@ -247,6 +268,28 @@ class SwiftAnalyzer {
         }
         
         return unusedFunctions + unusedVariables + unusedClasses
+    }
+    
+    private func countExcludedTestFiles() -> Int {
+        guard !options.includeTests else { return 0 }
+        
+        let directoryURL = URL(fileURLWithPath: directory)
+        let fileManager = FileManager.default
+        
+        guard let enumerator = fileManager.enumerator(at: directoryURL, includingPropertiesForKeys: nil) else {
+            return 0
+        }
+        
+        var count = 0
+        while let element = enumerator.nextObject() as? URL {
+            if !element.pathComponents.contains(".build") && element.pathExtension == "swift" {
+                if isTestFile(element) {
+                    count += 1
+                }
+            }
+        }
+        
+        return count
     }
     
     private func reasonDescription(_ reason: ExclusionReason) -> String {
