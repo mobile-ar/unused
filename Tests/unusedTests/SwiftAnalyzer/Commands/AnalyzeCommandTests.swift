@@ -454,4 +454,58 @@ struct AnalyzeCommandTests {
         #expect(filesWithTests.count == 2)
     }
     
+    @Test func testDisplayExistingResultsFromUnusedFile() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        
+        let testFile = tempDir.appendingPathComponent("Test.swift")
+        let content = """
+        func usedFunction() {
+            print("used")
+        }
+        
+        func unusedFunction() {
+            print("unused")
+        }
+        
+        var unusedVariable = "test"
+        
+        class UnusedClass {}
+        
+        class TestClass {
+            func test() {
+                usedFunction()
+            }
+        }
+        """
+        try content.write(to: testFile, atomically: true, encoding: .utf8)
+        
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        analyzer.analyzeFiles([testFile])
+        
+        let unusedFile = tempDir.appendingPathComponent(".unused")
+        #expect(FileManager.default.fileExists(atPath: unusedFile.path))
+        
+        let declarations = try CSVWriter.read(from: tempDir.path)
+        
+        #expect(!declarations.isEmpty)
+        
+        let functions = declarations.filter { $0.declaration.type == .function }
+        let variables = declarations.filter { $0.declaration.type == .variable }
+        let classes = declarations.filter { $0.declaration.type == .class }
+        
+        #expect(functions.count >= 1)
+        #expect(variables.count >= 1)
+        #expect(classes.count >= 1)
+        
+        #expect(functions.contains { $0.declaration.name == "unusedFunction" })
+        #expect(variables.contains { $0.declaration.name == "unusedVariable" })
+        #expect(classes.contains { $0.declaration.name == "UnusedClass" })
+    }
+
 }

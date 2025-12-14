@@ -15,6 +15,18 @@ enum ExclusionReason {
     case ibAction
     case ibOutlet
     case none
+
+    var description: String {
+        switch self {
+        case .override: return "override"
+        case .protocolImplementation: return "protocol"
+        case .objcAttribute: return "@objc"
+        case .ibAction: return "@IBAction"
+        case .ibOutlet: return "@IBOutlet"
+        case .none: return ""
+        }
+    }
+
 }
 
 struct Declaration {

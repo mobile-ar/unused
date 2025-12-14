@@ -30,10 +30,7 @@ struct Analyze: ParsableCommand {
     var includeTests: Bool = false
 
     func run() throws {
-        let startTime = CFAbsoluteTimeGetCurrent()
-        
         print("Unused v\(Unused.configuration.version)".blue.bold)
-        print("Running unused ...")
 
         let directoryURL = URL(fileURLWithPath: directory)
 
@@ -43,6 +40,26 @@ struct Analyze: ParsableCommand {
               isDirectory else {
             throw ValidationError("Directory does not exist: \(directory)")
         }
+
+        // Check for existing .unused file
+        let unusedFilePath = directoryURL.appendingPathComponent(".unused")
+        if FileManager.default.fileExists(atPath: unusedFilePath.path) {
+            print("Found existing .unused file from a previous run.".yellow)
+            print("Do you want to view the previous run results? (y/n): ".lavender, terminator: "")
+            fflush(stdout)
+
+            if let input = readLine()?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+               input == "y" {
+                try displayExistingResults()
+                return
+            } else {
+                print("Running analysis again...".peach)
+            }
+        } else {
+            print("Running unused ...")
+        }
+
+        let startTime = CFAbsoluteTimeGetCurrent()
 
         let swiftFiles = getSwiftFiles(in: directoryURL, includeTests: includeTests)
         print("Found \(swiftFiles.count) Swift files".teal)
@@ -60,6 +77,51 @@ struct Analyze: ParsableCommand {
         let endTime = CFAbsoluteTimeGetCurrent()
         let totalTime = endTime - startTime
         print("\nTotal processing time: \(String(format: "%.2f", totalTime))s".green.bold)
+    }
+
+    private func displayExistingResults() throws {
+        let declarations = try CSVWriter.read(from: directory)
+
+        if declarations.isEmpty {
+            print("\nNo unused code found!".green.bold)
+            return
+        }
+
+        let unusedFunctions = declarations.filter { $0.declaration.type == .function }
+        let unusedVariables = declarations.filter { $0.declaration.type == .variable }
+        let unusedClasses = declarations.filter { $0.declaration.type == .class }
+
+        let totalFindings = declarations.count
+        let idWidth = String(totalFindings).count
+
+        if !unusedFunctions.isEmpty {
+            print("\nUnused Functions:".peach.bold)
+            for item in unusedFunctions {
+                let reason = item.declaration.exclusionReason != .none ? " [\(item.declaration.exclusionReason.description)]".gray : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.declaration.name)".yellow + " in ".subtext0 + "\(item.declaration.file) : \(item.declaration.line)".sky + reason)
+            }
+        }
+
+        if !unusedVariables.isEmpty {
+            print("\nUnused Variables:".mauve.bold)
+            for item in unusedVariables {
+                let reason = item.declaration.exclusionReason != .none ? " [\(item.declaration.exclusionReason.description)]".gray : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.declaration.name)".yellow + " in ".subtext0 + "\(item.declaration.file) : \(item.declaration.line)".sky + reason)
+            }
+        }
+
+        if !unusedClasses.isEmpty {
+            print("\nUnused Classes:".pink.bold)
+            for item in unusedClasses {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.declaration.name)".yellow + " in ".subtext0 + "\(item.declaration.file) : \(item.declaration.line)".sky)
+            }
+        }
+
+        print("\nDisplaying results from existing .unused file.".green.bold)
+        print("Run analysis again to update results.".gray)
     }
 
 }

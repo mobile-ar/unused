@@ -169,7 +169,7 @@ class SwiftAnalyzer {
         if !unusedFunctions.isEmpty {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctions {
-                let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
                 let idString = String(format: "%\(idWidth)d", currentId)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
                 currentId += 1
@@ -179,7 +179,7 @@ class SwiftAnalyzer {
         if !unusedVariables.isEmpty {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariables {
-                let reason = item.exclusionReason != .none ? " [\(reasonDescription(item.exclusionReason))]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
                 let idString = String(format: "%\(idWidth)d", currentId)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
                 currentId += 1
@@ -291,15 +291,5 @@ class SwiftAnalyzer {
         
         return count
     }
-    
-    private func reasonDescription(_ reason: ExclusionReason) -> String {
-        switch reason {
-        case .override: return "override"
-        case .protocolImplementation: return "protocol"
-        case .objcAttribute: return "@objc"
-        case .ibAction: return "@IBAction"
-        case .ibOutlet: return "@IBOutlet"
-        case .none: return ""
-        }
-    }
+
 }
