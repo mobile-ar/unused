@@ -102,7 +102,7 @@ struct DeclarationTests {
         )
         
         let csv = declaration.toCSV(id: 1)
-        #expect(csv == "1,\"testFunction\",function,\"/path/to/file.swift\",42,none,\"\"")
+        #expect(csv == "1,\"testFunction\",\"function\",\"/path/to/file.swift\",42,\"none\",\"\"")
     }
     
     @Test func testToCSVWithParentType() async throws {
@@ -116,7 +116,7 @@ struct DeclarationTests {
         )
         
         let csv = declaration.toCSV(id: 5)
-        #expect(csv == "5,\"testMethod\",function,\"/path/to/file.swift\",10,override,\"MyClass\"")
+        #expect(csv == "5,\"testMethod\",\"function\",\"/path/to/file.swift\",10,\"override\",\"MyClass\"")
     }
     
     @Test func testToCSVVariable() async throws {
