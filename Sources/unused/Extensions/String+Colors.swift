@@ -3,7 +3,7 @@
 //
 
 extension String {
-    
+
     // Catppuccin Mocha colors because I like them, do I need permission to use them? Probably... not. :P
     var rosewater: String { return "\u{001B}[38;2;245;224;220m\(self)\u{001B}[0m" }
     var flamingo: String { return "\u{001B}[38;2;242;205;205m\(self)\u{001B}[0m" }
@@ -19,7 +19,7 @@ extension String {
     var sapphire: String { return "\u{001B}[38;2;116;199;236m\(self)\u{001B}[0m" }
     var blue: String { return "\u{001B}[38;2;137;180;250m\(self)\u{001B}[0m" }
     var lavender: String { return "\u{001B}[38;2;180;190;254m\(self)\u{001B}[0m" }
-    
+
     var text: String { return "\u{001B}[38;2;205;214;244m\(self)\u{001B}[0m" }
     var subtext1: String { return "\u{001B}[38;2;186;194;222m\(self)\u{001B}[0m" }
     var subtext0: String { return "\u{001B}[38;2;166;173;200m\(self)\u{001B}[0m" }
@@ -32,13 +32,13 @@ extension String {
     var base: String { return "\u{001B}[38;2;30;30;46m\(self)\u{001B}[0m" }
     var mantle: String { return "\u{001B}[38;2;24;24;37m\(self)\u{001B}[0m" }
     var crust: String { return "\u{001B}[38;2;17;17;27m\(self)\u{001B}[0m" }
-    
+
     // Aliases for common color names
     var black: String { return crust }
     var gray: String { return overlay0 }
     var cyan: String { return teal }
     var magenta: String { return mauve }
-    
+
     // Background colors
     var bgRosewater: String { return "\u{001B}[48;2;245;224;220m\(self)\u{001B}[0m" }
     var bgFlamingo: String { return "\u{001B}[48;2;242;205;205m\(self)\u{001B}[0m" }
@@ -54,7 +54,7 @@ extension String {
     var bgSapphire: String { return "\u{001B}[48;2;116;199;236m\(self)\u{001B}[0m" }
     var bgBlue: String { return "\u{001B}[48;2;137;180;250m\(self)\u{001B}[0m" }
     var bgLavender: String { return "\u{001B}[48;2;180;190;254m\(self)\u{001B}[0m" }
-    
+
     var bgText: String { return "\u{001B}[48;2;205;214;244m\(self)\u{001B}[0m" }
     var bgSubtext1: String { return "\u{001B}[48;2;186;194;222m\(self)\u{001B}[0m" }
     var bgSubtext0: String { return "\u{001B}[48;2;166;173;200m\(self)\u{001B}[0m" }
@@ -67,17 +67,17 @@ extension String {
     var bgBase: String { return "\u{001B}[48;2;30;30;46m\(self)\u{001B}[0m" }
     var bgMantle: String { return "\u{001B}[48;2;24;24;37m\(self)\u{001B}[0m" }
     var bgCrust: String { return "\u{001B}[48;2;17;17;27m\(self)\u{001B}[0m" }
-    
+
     // Aliases for common background color names
     var bgBlack: String { return bgCrust }
     var bgGray: String { return bgOverlay0 }
     var bgCyan: String { return bgTeal }
     var bgMagenta: String { return bgMauve }
     var bgBrown: String { return bgPeach }
-    
+
     // Text styles
     var bold: String { return "\u{001B}[1m\(self)\u{001B}[22m" }
     var italic: String { return "\u{001B}[3m\(self)\u{001B}[23m" }
     var underline: String { return "\u{001B}[4m\(self)\u{001B}[24m" }
-    
+
 }
