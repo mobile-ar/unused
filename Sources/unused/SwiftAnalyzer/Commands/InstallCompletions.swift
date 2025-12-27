@@ -76,22 +76,35 @@ struct InstallCompletions: ParsableCommand {
     }
 
     private func installZshCompletions(homeDir: String) throws {
-        let rcFile = "\(homeDir)/.zshrc"
-        let completionLine = """
-        # Unused CLI completions
-        if command -v unused &> /dev/null; then
-            eval "$(unused generate-completion-script --shell zsh)"
-        fi
-        """
-
-        if fileContainsCompletions(rcFile) && !force {
-            print("✓ Completions already installed in ~/.zshrc".yellow)
+        let completionsDir = "\(homeDir)/.zsh/completions"
+        let completionFile = "\(completionsDir)/_unused"
+        
+        if FileManager.default.fileExists(atPath: completionFile) && !force {
+            print("✓ Completions already installed at \(completionFile)".yellow)
             print("  Use --force to reinstall".gray)
             return
         }
-
-        try appendToFile(rcFile, content: completionLine)
-        print("✓ Successfully installed completions to ~/.zshrc".green)
+        
+        try FileManager.default.createDirectory(
+            atPath: completionsDir,
+            withIntermediateDirectories: true
+        )
+        
+        let script = Unused.completionScript(for: .zsh)
+        try script.write(toFile: completionFile, atomically: true, encoding: .utf8)
+        
+        let rcFile = "\(homeDir)/.zshrc"
+        let completionLine = """
+        
+        # Unused CLI completions
+        fpath=(~/.zsh/completions $fpath)
+        """
+        
+        if !fileContainsFpathSetup(rcFile) {
+            try prependBeforeOhMyZsh(rcFile, content: completionLine)
+        }
+        
+        print("✓ Successfully installed completions to \(completionFile)".green)
         print("\n" + "To activate completions, run:".teal)
         print("  source ~/.zshrc".bold)
         print("\nOr restart your terminal.".gray)
@@ -128,6 +141,35 @@ struct InstallCompletions: ParsableCommand {
             return false
         }
         return content.contains("unused generate-completion-script")
+    }
+    
+    private func fileContainsFpathSetup(_ path: String) -> Bool {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return false
+        }
+        return content.contains("/.zsh/completions")
+    }
+    
+    private func prependBeforeOhMyZsh(_ path: String, content: String) throws {
+        let fileManager = FileManager.default
+        
+        if !fileManager.fileExists(atPath: path) {
+            fileManager.createFile(atPath: path, contents: nil)
+        }
+        
+        guard let existingContent = try? String(contentsOfFile: path, encoding: .utf8) else {
+            try appendToFile(path, content: content)
+            return
+        }
+        
+        if let range = existingContent.range(of: "source $ZSH/oh-my-zsh.sh") {
+            let insertPosition = existingContent.distance(from: existingContent.startIndex, to: range.lowerBound)
+            var newContent = existingContent
+            newContent.insert(contentsOf: content + "\n", at: existingContent.index(existingContent.startIndex, offsetBy: insertPosition))
+            try newContent.write(toFile: path, atomically: true, encoding: .utf8)
+        } else {
+            try appendToFile(path, content: content)
+        }
     }
 
     private func appendToFile(_ path: String, content: String) throws {
