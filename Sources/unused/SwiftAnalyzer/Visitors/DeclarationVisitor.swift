@@ -30,7 +30,7 @@ class DeclarationVisitor: SyntaxVisitor {
         guard !insideProtocol else {
             return .visitChildren
         }
-        
+
         let name = node.name.text
         var exclusionReason: ExclusionReason = .none
 
@@ -66,7 +66,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
-        
+
         declarations.append(Declaration(
             name: name,
             type: .function,
@@ -82,7 +82,7 @@ class DeclarationVisitor: SyntaxVisitor {
         guard !insideProtocol else {
             return .visitChildren
         }
-        
+
         for binding in node.bindings {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                 let name = identifier.identifier.text
@@ -100,7 +100,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
                 let location = node.startLocation(converter: sourceLocationConverter)
                 let lineNumber = location.line
-                
+
                 declarations.append(Declaration(
                     name: name,
                     type: .variable,
@@ -120,7 +120,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
-        
+
         declarations.append(Declaration(
             name: name,
             type: .class,
@@ -142,7 +142,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
-        
+
         declarations.append(Declaration(
             name: name,
             type: .class,
@@ -164,7 +164,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
-        
+
         declarations.append(Declaration(
             name: name,
             type: .class,
@@ -179,12 +179,12 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visitPost(_ node: EnumDeclSyntax) {
         popTypeContext()
     }
-    
+
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
         insideProtocol = true
         return .visitChildren
     }
-    
+
     override func visitPost(_ node: ProtocolDeclSyntax) {
         insideProtocol = false
     }
@@ -192,9 +192,9 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = extractTypeName(from: node.extendedType)
         let protocols = extractProtocols(from: node.inheritanceClause)
-        
+
         pushTypeContext(name: name, protocols: protocols)
-        
+
         if !protocols.isEmpty {
             typeProtocolConformance[name, default: Set()].formUnion(protocols)
         }
@@ -204,17 +204,17 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visitPost(_ node: ExtensionDeclSyntax) {
         popTypeContext()
     }
-    
+
     private func pushTypeContext(name: String, protocols: Set<String>) {
         typeContextStack.append((name: currentTypeName, protocols: currentTypeProtocols))
         currentTypeName = name
         currentTypeProtocols = protocols
-        
+
         if !protocols.isEmpty {
             typeProtocolConformance[name, default: Set()].formUnion(protocols)
         }
     }
-    
+
     private func popTypeContext() {
         if let previous = typeContextStack.popLast() {
             currentTypeName = previous.name
@@ -231,7 +231,7 @@ class DeclarationVisitor: SyntaxVisitor {
         }
         return type.trimmedDescription
     }
-    
+
     private func extractProtocols(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
         var protocols = Set<String>()
         guard let clause = inheritanceClause else { return protocols }
