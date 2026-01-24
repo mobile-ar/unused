@@ -11,8 +11,8 @@ struct Clean: ParsableCommand {
         abstract: "Clean up all .unused files from the specified directory"
     )
 
-    @Argument(help: "The directory to clean .unused files from")
-    var directory: String
+    @Argument(help: "The directory to clean .unused files from (defaults to current directory)")
+    var directory: String = FileManager.default.currentDirectoryPath
 
     @Flag(name: .long, help: "Perform a dry run without deleting files")
     var dryRun: Bool = false

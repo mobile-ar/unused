@@ -11,8 +11,8 @@ struct Analyze: AsyncParsableCommand {
         abstract: "Analyze Swift files for unused declarations"
     )
 
-    @Argument(help: "The directory containing Swift files to analyze")
-    var directory: String
+    @Argument(help: "The directory containing Swift files to analyze (defaults to current directory)")
+    var directory: String = FileManager.default.currentDirectoryPath
 
     @Flag(name: .long, help: "Include override methods in the results")
     var includeOverrides: Bool = false

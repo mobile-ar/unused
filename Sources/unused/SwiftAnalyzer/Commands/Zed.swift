@@ -11,15 +11,15 @@ struct Zed: ParsableCommand {
         abstract: "Open an unused declaration in Zed editor by its ID"
     )
 
-    @Argument(help: "The directory containing the .unused file")
-    var directory: String
-
     @Argument(help: "The ID of the unused declaration to open")
-    var zed: Int
+    var id: Int
+
+    @Argument(help: "The directory containing the .unused file (defaults to current directory)")
+    var directory: String = FileManager.default.currentDirectoryPath
 
     func run() throws {
         try EditorOpener.open(
-            id: zed,
+            id: id,
             inDirectory: directory,
             using: .zed
         )
