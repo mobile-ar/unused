@@ -13,19 +13,30 @@ class SwiftAnalyzer {
     private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
     private let options: AnalyzerOptions
     private let directory: String
+    private let swiftInterfaceClient: SwiftInterfaceClient?
 
     init(options: AnalyzerOptions = AnalyzerOptions(), directory: String) {
         self.options = options
         self.directory = directory
+        self.swiftInterfaceClient = SwiftInterfaceClient()
     }
 
-    func analyzeFiles(_ files: [URL]) {
+    func analyzeFiles(_ files: [URL]) async {
         let totalFiles = files.count
 
-        // First pass: collect protocol requirements
+        // First pass: collect protocol requirements from project files
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         for (index, file) in files.enumerated() {
             printProgressBar(prefix: "Analyzing protocols...", current: index + 1, total: totalFiles)
-            collectProtocols(at: file)
+            collectProtocols(at: file, using: protocolVisitor)
+        }
+        
+        // Resolve external protocols via SourceKit
+        await protocolVisitor.resolveExternalProtocols()
+        
+        // Merge all protocol requirements
+        for (protocolName, methods) in protocolVisitor.protocolRequirements {
+            protocolRequirements[protocolName, default: Set()].formUnion(methods)
         }
         print("")
 
@@ -65,21 +76,18 @@ class SwiftAnalyzer {
         let percentage = String(format: "%.1f", progress * 100)
 
         print("\r \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
-        fflush(stdout)
+        if current == total {
+            fflush(stdout)
+        }
     }
 
-    private func collectProtocols(at url: URL) {
+    private func collectProtocols(at url: URL, using visitor: ProtocolVisitor) {
         guard let source = try? String(contentsOf: url, encoding: .utf8) else {
             return
         }
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-
-        for (protocolName, methods) in visitor.protocolRequirements {
-            protocolRequirements[protocolName, default: Set()].formUnion(methods)
-        }
     }
 
     private func collectDeclarations(at url: URL) {

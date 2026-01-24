@@ -5,7 +5,7 @@
 import ArgumentParser
 import Foundation
 
-struct Analyze: ParsableCommand {
+struct Analyze: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
         abstract: "Analyze Swift files for unused declarations"
@@ -29,7 +29,7 @@ struct Analyze: ParsableCommand {
     @Flag(name: .long, help: "Include test files in the analysis")
     var includeTests: Bool = false
 
-    func run() throws {
+    func run() async throws {
         print("Unused v\(Unused.configuration.version)".blue.bold)
 
         let directoryURL = URL(fileURLWithPath: directory)
@@ -72,7 +72,7 @@ struct Analyze: ParsableCommand {
             includeTests: includeTests
         )
         let analyzer = SwiftAnalyzer(options: options, directory: directory)
-        analyzer.analyzeFiles(swiftFiles)
+        await analyzer.analyzeFiles(swiftFiles)
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let totalTime = endTime - startTime

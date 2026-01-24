@@ -4,7 +4,8 @@
 
 import ArgumentParser
 
-struct Unused: ParsableCommand {
+@main
+struct Unused: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "unused",
