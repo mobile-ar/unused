@@ -13,7 +13,7 @@ struct ProtocolVisitorTests {
     private let swiftInterfaceClient = SwiftInterfaceClient()
 
     @Test
-    func testProjectDefinedProtocol() throws {
+    func testProjectDefinedProtocol() async throws {
         let source = """
         protocol MyProtocol {
             func myMethod()
@@ -24,7 +24,7 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         #expect(visitor.protocolRequirements.keys.contains("MyProtocol"))
         #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
@@ -32,7 +32,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testExternalProtocolInStruct() throws {
+    func testExternalProtocolInStruct() async throws {
         let source = """
         struct MyStruct: Equatable {
             let value: Int
@@ -46,14 +46,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
         #expect(visitor.protocolRequirements["Equatable"] != nil)
     }
 
     @Test
-    func testExternalProtocolInExtension() throws {
+    func testExternalProtocolInExtension() async throws {
         let source = """
         enum AppEnvironmentType: String {
             case production
@@ -70,14 +70,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
         #expect(visitor.protocolRequirements["Equatable"] != nil)
     }
 
     @Test
-    func testCodableProtocol() throws {
+    func testCodableProtocol() async throws {
         let source = """
         struct User: Codable {
             let name: String
@@ -105,14 +105,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
         #expect(visitor.protocolRequirements["Codable"] != nil)
     }
 
     @Test
-    func testIdentifiableProtocol() throws {
+    func testIdentifiableProtocol() async throws {
         let source = """
         struct Item: Identifiable {
             var id: String
@@ -123,14 +123,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // Identifiable is resolved via SourceKit
         #expect(visitor.protocolRequirements["Identifiable"] != nil)
     }
 
     @Test
-    func testCustomStringConvertible() throws {
+    func testCustomStringConvertible() async throws {
         let source = """
         struct Person: CustomStringConvertible {
             let name: String
@@ -144,14 +144,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // CustomStringConvertible is resolved via SourceKit
         #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
     }
 
     @Test
-    func testMultipleProtocolsInClass() throws {
+    func testMultipleProtocolsInClass() async throws {
         let source = """
         class MyClass: Equatable, Hashable {
             let id: Int
@@ -169,7 +169,7 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
         #expect(visitor.protocolRequirements["Equatable"] != nil)
@@ -177,7 +177,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testProjectDefinedProtocolNotMixedWithExternal() throws {
+    func testProjectDefinedProtocolNotMixedWithExternal() async throws {
         let source = """
         protocol MyProtocol {
             func myMethod()
@@ -195,7 +195,7 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // Project-defined protocol should have its declared methods
         #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
@@ -209,7 +209,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testEnumWithExternalProtocol() throws {
+    func testEnumWithExternalProtocol() async throws {
         let source = """
         enum Status: String, CaseIterable {
             case active
@@ -220,14 +220,14 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // CaseIterable is resolved via SourceKit
         #expect(visitor.protocolRequirements["CaseIterable"] != nil)
     }
 
     @Test
-    func testNoProtocolConformance() throws {
+    func testNoProtocolConformance() async throws {
         let source = """
         struct SimpleStruct {
             let value: Int
@@ -241,13 +241,13 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         #expect(visitor.protocolRequirements.isEmpty)
     }
 
     @Test
-    func testKnownProtocolRequirements() throws {
+    func testKnownProtocolRequirements() async throws {
         // Test that the known protocols fallback contains expected requirements
         let source = """
         struct Test: Equatable, Hashable, Codable, Identifiable, CustomStringConvertible {
@@ -263,7 +263,7 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         // All external protocols should be tracked
         #expect(visitor.protocolRequirements["Equatable"] != nil)
@@ -274,7 +274,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testProtocolWithPropertyRequirements() throws {
+    func testProtocolWithPropertyRequirements() async throws {
         let source = """
         protocol DataProvider {
             var data: [String] { get }
@@ -286,7 +286,7 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        visitor.resolveExternalProtocols()
+        await visitor.resolveExternalProtocols()
 
         #expect(visitor.protocolRequirements["DataProvider"]?.contains("data") == true)
         #expect(visitor.protocolRequirements["DataProvider"]?.contains("count") == true)

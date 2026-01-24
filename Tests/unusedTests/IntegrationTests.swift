@@ -46,7 +46,7 @@ struct IntegrationTests {
         )
         
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([testSwiftFile])
+        await analyzer.analyzeFiles([testSwiftFile])
         
         let unusedFilePath = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFilePath.path))

@@ -13,7 +13,7 @@ struct DeclarationVisitorTests {
     private let swiftInterfaceClient = SwiftInterfaceClient()
 
     @Test
-    func testExtensionWithExternalProtocolConformance() throws {
+    func testExtensionWithExternalProtocolConformance() async throws {
         let source = """
         enum AppEnvironmentType: String {
             case production
@@ -30,7 +30,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -45,7 +45,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testExtensionWithProjectProtocolConformance() throws {
+    func testExtensionWithProjectProtocolConformance() async throws {
         let source = """
         protocol MyProtocol {
             func myMethod()
@@ -65,7 +65,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -82,7 +82,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testExtensionWithMultipleProtocols() throws {
+    func testExtensionWithMultipleProtocols() async throws {
         let source = """
         struct User {
             let id: Int
@@ -103,7 +103,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -122,7 +122,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testExtensionWithoutProtocolConformance() throws {
+    func testExtensionWithoutProtocolConformance() async throws {
         let source = """
         struct MyStruct {
             let value: Int
@@ -138,7 +138,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -153,7 +153,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testCodableImplementationInExtension() throws {
+    func testCodableImplementationInExtension() async throws {
         let source = """
         struct User {
             let name: String
@@ -183,7 +183,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -199,7 +199,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testTypeProtocolConformanceAccumulation() throws {
+    func testTypeProtocolConformanceAccumulation() async throws {
         let source = """
         struct MyType: Equatable {
             let value: Int
@@ -221,7 +221,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
@@ -238,7 +238,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testOperatorFunctionMarkedAsProtocolImplementation() throws {
+    func testOperatorFunctionMarkedAsProtocolImplementation() async throws {
         let source = """
         struct Point: Equatable {
             let x: Int
@@ -253,7 +253,7 @@ struct DeclarationVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
         protocolVisitor.walk(sourceFile)
-        protocolVisitor.resolveExternalProtocols()
+        await protocolVisitor.resolveExternalProtocols()
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",

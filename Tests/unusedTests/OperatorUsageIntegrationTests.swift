@@ -75,7 +75,7 @@ struct OperatorUsageIntegrationTests {
             directory: tempDir.path
         )
         
-        analyzer.analyzeFiles([summaryFile, usageFile])
+        await analyzer.analyzeFiles([summaryFile, usageFile])
         
         let csvFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: csvFile.path))
@@ -150,7 +150,7 @@ struct OperatorUsageIntegrationTests {
             directory: tempDir.path
         )
         
-        analyzer.analyzeFiles([summaryEquatableFile, usageFile])
+        await analyzer.analyzeFiles([summaryEquatableFile, usageFile])
         
         let csvFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: csvFile.path))
@@ -210,7 +210,7 @@ struct OperatorUsageIntegrationTests {
             directory: tempDir.path
         )
         
-        analyzer.analyzeFiles([operatorFile])
+        await analyzer.analyzeFiles([operatorFile])
         
         let csvFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: csvFile.path))
@@ -278,7 +278,7 @@ struct OperatorUsageIntegrationTests {
             directory: tempDir.path
         )
 
-        analyzer.analyzeFiles([comparableFile])
+        await analyzer.analyzeFiles([comparableFile])
 
         let csvFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: csvFile.path))

@@ -36,7 +36,7 @@ struct AnalyzeCommandTests {
         
         let options = AnalyzerOptions()
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -64,7 +64,7 @@ struct AnalyzeCommandTests {
         
         let optionsWithOverrides = AnalyzerOptions(includeOverrides: true)
         let analyzer = SwiftAnalyzer(options: optionsWithOverrides, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -94,7 +94,7 @@ struct AnalyzeCommandTests {
         
         let optionsWithProtocols = AnalyzerOptions(includeProtocols: true)
         let analyzer = SwiftAnalyzer(options: optionsWithProtocols, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -128,7 +128,7 @@ struct AnalyzeCommandTests {
         
         let optionsWithObjc = AnalyzerOptions(includeObjc: true)
         let analyzer = SwiftAnalyzer(options: optionsWithObjc, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -182,7 +182,7 @@ struct AnalyzeCommandTests {
         
         let options = AnalyzerOptions()
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([commandFile, shellFile])
+        await analyzer.analyzeFiles([commandFile, shellFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         
@@ -224,7 +224,7 @@ struct AnalyzeCommandTests {
         
         let optionsWithShowExcluded = AnalyzerOptions(showExcluded: true)
         let analyzer = SwiftAnalyzer(options: optionsWithShowExcluded, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -272,7 +272,7 @@ struct AnalyzeCommandTests {
             showExcluded: true
         )
         let analyzer = SwiftAnalyzer(options: allOptions, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -288,7 +288,7 @@ struct AnalyzeCommandTests {
         
         let options = AnalyzerOptions()
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([])
+        await analyzer.analyzeFiles([])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -324,7 +324,7 @@ struct AnalyzeCommandTests {
         
         let options = AnalyzerOptions()
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([file1, file2])
+        await analyzer.analyzeFiles([file1, file2])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
@@ -442,14 +442,14 @@ struct AnalyzeCommandTests {
         let optionsWithoutTests = AnalyzerOptions(includeTests: false)
         let analyzerWithoutTests = SwiftAnalyzer(options: optionsWithoutTests, directory: tempDir.path)
         let filesWithoutTests = getSwiftFiles(in: tempDir, includeTests: false)
-        analyzerWithoutTests.analyzeFiles(filesWithoutTests)
+        await analyzerWithoutTests.analyzeFiles(filesWithoutTests)
         
         #expect(filesWithoutTests.count == 1)
         
         let optionsWithTests = AnalyzerOptions(includeTests: true)
         let analyzerWithTests = SwiftAnalyzer(options: optionsWithTests, directory: tempDir.path)
         let filesWithTests = getSwiftFiles(in: tempDir, includeTests: true)
-        analyzerWithTests.analyzeFiles(filesWithTests)
+        await analyzerWithTests.analyzeFiles(filesWithTests)
         
         #expect(filesWithTests.count == 2)
     }
@@ -486,7 +486,7 @@ struct AnalyzeCommandTests {
         
         let options = AnalyzerOptions()
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
-        analyzer.analyzeFiles([testFile])
+        await analyzer.analyzeFiles([testFile])
         
         let unusedFile = tempDir.appendingPathComponent(".unused")
         #expect(FileManager.default.fileExists(atPath: unusedFile.path))
