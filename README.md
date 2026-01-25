@@ -19,8 +19,10 @@ cp .build/release/unused /usr/local/bin/
 ## Usage
 
 ```bash
-unused <directory> [options]
+unused [<directory>] [options]
 ```
+### Arguments
+- `<directory>` : The directory containing Swift files to analyze (defaults to current working directory)
 
 ### Options
 
@@ -34,16 +36,19 @@ unused <directory> [options]
 By default, overrides, protocol implementations, and framework callbacks are excluded from the results as they are typically called by the framework/runtime.
 
 ### Example
-
 ```bash
 unused ~/Projects/MyApp/Sources --include-overrides
+```
+or 
+```bash
+unused --show-excluded
 ```
 
 ## Shell Completion (Autocomplete)
 
 The `unused` tool supports tab completion for bash, zsh, and fish shells.
 
-### Quick Setup (Recommended)
+### Quick Setup
 
 Just run this command:
 
@@ -68,8 +73,6 @@ source ~/.zshrc
 # Fish loads completions automatically
 ```
 
-That's it! Now press `TAB` to autocomplete `unused` commands and options.
-
 ### What You Get
 
 Once installed, you can use tab completion for:
@@ -93,21 +96,6 @@ If you update the tool, reinstall completions with:
 unused install-completions --force
 ```
 
-### Manual Installation (Advanced)
-
-If you prefer manual control, you can generate completion scripts:
-
-```bash
-# For bash
-unused generate-completion-script --shell bash > /usr/local/etc/bash_completion.d/unused
-
-# For zsh
-unused generate-completion-script --shell zsh > /usr/local/share/zsh/site-functions/_unused
-
-# For fish
-unused generate-completion-script --shell fish > ~/.config/fish/completions/unused.fish
-```
-
 ## Commands
 
 ### analyze (default)
@@ -115,7 +103,7 @@ unused generate-completion-script --shell fish > ~/.config/fish/completions/unus
 Analyze Swift files for unused declarations.
 
 ```bash
-unused <directory> [options]
+unused analyze [<directory>] [options]
 ```
 
 This is the default command, so you can omit the `analyze` keyword.
@@ -130,17 +118,6 @@ unused install-completions [--force]
 
 Options:
 - `--force`: Force reinstallation even if already installed
-
-### generate-completion-script
-
-Generate shell completion script (for advanced users).
-
-```bash
-unused generate-completion-script --shell <bash|zsh|fish>
-```
-
-Options:
-- `--shell`: The shell for which to generate completions (default: bash)
 
 ## Features
 
@@ -174,8 +151,8 @@ These exclusions help reduce false positives since these items are often called 
 
 ## Requirements
 
-- Swift 6.2 or later
-- macOS 14 or later
+- Swift 6.2.3 or later.
+- macOS 15 or later (might also work in previous version but I won't be supporting any previous versions).
 
 ## License
 
