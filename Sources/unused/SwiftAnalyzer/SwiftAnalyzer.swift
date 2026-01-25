@@ -30,6 +30,7 @@ class SwiftAnalyzer {
             printProgressBar(prefix: "Analyzing protocols...", current: index + 1, total: totalFiles)
             collectProtocols(at: file, using: protocolVisitor)
         }
+        print("")
 
         // Resolve external protocols via SourceKit
         await protocolVisitor.resolveExternalProtocols()
@@ -38,7 +39,6 @@ class SwiftAnalyzer {
         for (protocolName, methods) in protocolVisitor.protocolRequirements {
             protocolRequirements[protocolName, default: Set()].formUnion(methods)
         }
-        print("")
 
         // Second pass: collect all declarations
         for (index, file) in files.enumerated() {
@@ -61,22 +61,6 @@ class SwiftAnalyzer {
             try ReportService.write(report: report, to: directory)
         } catch {
             print("Error writing .unused.json file: \(error)".red.bold)
-        }
-    }
-
-    private func printProgressBar(prefix: String, current: Int, total: Int) {
-        let barLength = 50
-        let progress = Double(current) / Double(total)
-        let filledLength = Int(progress * Double(barLength))
-        let emptyLength = barLength - filledLength
-
-        let filledBar = String(repeating: "█", count: filledLength).mauve
-        let emptyBar = String(repeating: "░", count: emptyLength).lavender
-        let percentage = String(format: "%.1f", progress * 100)
-
-        print("\r \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
-        if current == total {
-            fflush(stdout)
         }
     }
 
@@ -221,7 +205,7 @@ class SwiftAnalyzer {
         if !unusedFunctionItems.isEmpty {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctionItems {
-                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
@@ -230,7 +214,7 @@ class SwiftAnalyzer {
         if !unusedVariableItems.isEmpty {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariableItems {
-                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
@@ -303,10 +287,10 @@ class SwiftAnalyzer {
             }
 
             if !flags.isEmpty {
-                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".gray)
+                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".overlay0)
             }
             if !options.showExcluded {
-                print("Use --show-excluded to see the list of excluded items.".gray)
+                print("Use --show-excluded to see the list of excluded items.".overlay0)
             }
         }
 

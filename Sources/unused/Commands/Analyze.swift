@@ -95,7 +95,7 @@ struct Analyze: AsyncParsableCommand {
         if !unusedFunctions.isEmpty {
             print("\nUnused Functions:".peach.bold)
             for item in unusedFunctions {
-                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
@@ -104,7 +104,7 @@ struct Analyze: AsyncParsableCommand {
         if !unusedVariables.isEmpty {
             print("\nUnused Variables:".mauve.bold)
             for item in unusedVariables {
-                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
@@ -178,15 +178,15 @@ struct Analyze: AsyncParsableCommand {
             }
 
             if !flags.isEmpty {
-                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".gray)
+                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".overlay0)
             }
             if !showExcluded {
-                print("Use --show-excluded to see the list of excluded items.".gray)
+                print("Use --show-excluded to see the list of excluded items.".overlay0)
             }
         }
 
         print("\nDisplaying results from existing .unused.json file.".green.bold)
-        print("Run analysis again to update results.".gray)
+        print("Run analysis again to update results.".overlay0)
     }
 
 }

@@ -33,48 +33,6 @@ extension String {
     var mantle: String { return "\u{001B}[38;2;24;24;37m\(self)\u{001B}[0m" }
     var crust: String { return "\u{001B}[38;2;17;17;27m\(self)\u{001B}[0m" }
 
-    // Aliases for common color names
-    var black: String { return crust }
-    var gray: String { return overlay0 }
-    var cyan: String { return teal }
-    var magenta: String { return mauve }
-
-    // Background colors
-    var bgRosewater: String { return "\u{001B}[48;2;245;224;220m\(self)\u{001B}[0m" }
-    var bgFlamingo: String { return "\u{001B}[48;2;242;205;205m\(self)\u{001B}[0m" }
-    var bgPink: String { return "\u{001B}[48;2;245;194;231m\(self)\u{001B}[0m" }
-    var bgMauve: String { return "\u{001B}[48;2;203;166;247m\(self)\u{001B}[0m" }
-    var bgRed: String { return "\u{001B}[48;2;243;139;168m\(self)\u{001B}[0m" }
-    var bgMaroon: String { return "\u{001B}[48;2;235;160;172m\(self)\u{001B}[0m" }
-    var bgPeach: String { return "\u{001B}[48;2;250;179;135m\(self)\u{001B}[0m" }
-    var bgYellow: String { return "\u{001B}[48;2;249;226;175m\(self)\u{001B}[0m" }
-    var bgGreen: String { return "\u{001B}[48;2;166;227;161m\(self)\u{001B}[0m" }
-    var bgTeal: String { return "\u{001B}[48;2;148;226;213m\(self)\u{001B}[0m" }
-    var bgSky: String { return "\u{001B}[48;2;137;220;235m\(self)\u{001B}[0m" }
-    var bgSapphire: String { return "\u{001B}[48;2;116;199;236m\(self)\u{001B}[0m" }
-    var bgBlue: String { return "\u{001B}[48;2;137;180;250m\(self)\u{001B}[0m" }
-    var bgLavender: String { return "\u{001B}[48;2;180;190;254m\(self)\u{001B}[0m" }
-
-    var bgText: String { return "\u{001B}[48;2;205;214;244m\(self)\u{001B}[0m" }
-    var bgSubtext1: String { return "\u{001B}[48;2;186;194;222m\(self)\u{001B}[0m" }
-    var bgSubtext0: String { return "\u{001B}[48;2;166;173;200m\(self)\u{001B}[0m" }
-    var bgOverlay2: String { return "\u{001B}[48;2;147;153;178m\(self)\u{001B}[0m" }
-    var bgOverlay1: String { return "\u{001B}[48;2;127;132;156m\(self)\u{001B}[0m" }
-    var bgOverlay0: String { return "\u{001B}[48;2;108;112;134m\(self)\u{001B}[0m" }
-    var bgSurface2: String { return "\u{001B}[48;2;88;91;112m\(self)\u{001B}[0m" }
-    var bgSurface1: String { return "\u{001B}[48;2;69;71;90m\(self)\u{001B}[0m" }
-    var bgSurface0: String { return "\u{001B}[48;2;49;50;68m\(self)\u{001B}[0m" }
-    var bgBase: String { return "\u{001B}[48;2;30;30;46m\(self)\u{001B}[0m" }
-    var bgMantle: String { return "\u{001B}[48;2;24;24;37m\(self)\u{001B}[0m" }
-    var bgCrust: String { return "\u{001B}[48;2;17;17;27m\(self)\u{001B}[0m" }
-
-    // Aliases for common background color names
-    var bgBlack: String { return bgCrust }
-    var bgGray: String { return bgOverlay0 }
-    var bgCyan: String { return bgTeal }
-    var bgMagenta: String { return bgMauve }
-    var bgBrown: String { return bgPeach }
-
     // Text styles
     var bold: String { return "\u{001B}[1m\(self)\u{001B}[22m" }
     var italic: String { return "\u{001B}[3m\(self)\u{001B}[23m" }

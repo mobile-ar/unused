@@ -64,7 +64,7 @@ struct InstallCompletions: ParsableCommand {
 
         if fileContainsCompletions(rcFile) && !force {
             print("✓ Completions already installed in ~/.bashrc".yellow)
-            print("  Use --force to reinstall".gray)
+            print("  Use --force to reinstall".overlay0)
             return
         }
 
@@ -72,7 +72,7 @@ struct InstallCompletions: ParsableCommand {
         print("✓ Successfully installed completions to ~/.bashrc".green)
         print("\n" + "To activate completions, run:".teal)
         print("  source ~/.bashrc".bold)
-        print("\nOr restart your terminal.".gray)
+        print("\nOr restart your terminal.".overlay0)
     }
 
     private func installZshCompletions(homeDir: String) throws {
@@ -81,7 +81,7 @@ struct InstallCompletions: ParsableCommand {
         
         if FileManager.default.fileExists(atPath: completionFile) && !force {
             print("✓ Completions already installed at \(completionFile)".yellow)
-            print("  Use --force to reinstall".gray)
+            print("  Use --force to reinstall".overlay0)
             return
         }
         
@@ -107,7 +107,7 @@ struct InstallCompletions: ParsableCommand {
         print("✓ Successfully installed completions to \(completionFile)".green)
         print("\n" + "To activate completions, run:".teal)
         print("  source ~/.zshrc".bold)
-        print("\nOr restart your terminal.".gray)
+        print("\nOr restart your terminal.".overlay0)
     }
 
     private func installFishCompletions(homeDir: String) throws {
@@ -117,7 +117,7 @@ struct InstallCompletions: ParsableCommand {
         // Check if already installed
         if FileManager.default.fileExists(atPath: completionFile) && !force {
             print("✓ Completions already installed at \(completionFile)".yellow)
-            print("  Use --force to reinstall".gray)
+            print("  Use --force to reinstall".overlay0)
             return
         }
 
@@ -133,7 +133,7 @@ struct InstallCompletions: ParsableCommand {
 
         print("✓ Successfully installed completions to \(completionFile)".green)
         print("\n" + "Completions are now active!".teal.bold)
-        print("Fish loads completions automatically.".gray)
+        print("Fish loads completions automatically.".overlay0)
     }
 
     private func fileContainsCompletions(_ path: String) -> Bool {

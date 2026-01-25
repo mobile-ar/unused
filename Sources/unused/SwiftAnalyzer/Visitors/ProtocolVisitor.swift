@@ -94,14 +94,15 @@ class ProtocolVisitor: SyntaxVisitor {
         }
     }
 
-    /// Resolve all external protocols using SwiftInterfaceClient
+    /// Resolve all external protocols (protocols that are not part of the project) using SwiftInterfaceClient
     func resolveExternalProtocols() async {
         // Always include Swift standard library as a fallback
         let modulesToTry = importedModules.union(["Swift"])
-        print("\n Modules: ".magenta.bold + "\(modulesToTry)".magenta)
-
-        for protocolName in externalProtocolsToResolve {
+        
+        let total = externalProtocolsToResolve.count
+        for (index, protocolName) in externalProtocolsToResolve.enumerated() {
             // Skip if already resolved (e.g., by another file)
+            printProgressBar(prefix: "Analyzing external protocols...", current: index + 1, total: total)
             if protocolRequirements[protocolName] != nil {
                 continue
             }
@@ -120,6 +121,7 @@ class ProtocolVisitor: SyntaxVisitor {
             // This marks the protocol as "seen" and prevents false positives
             protocolRequirements[protocolName] = foundRequirements ?? Set()
         }
+        print("")
     }
 
 }
