@@ -349,7 +349,7 @@ struct AnalyzeCommandTests {
         let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
         try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
 
-        let files = getSwiftFiles(in: tempDir, includeTests: false)
+        let files = await getSwiftFiles(in: tempDir, includeTests: false)
 
         #expect(files.count == 1)
         #expect(files.first?.lastPathComponent == "Regular.swift")
@@ -374,7 +374,7 @@ struct AnalyzeCommandTests {
         let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
         try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
 
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
 
         #expect(files.count == 3)
     }
@@ -436,14 +436,14 @@ struct AnalyzeCommandTests {
 
         let optionsWithoutTests = AnalyzerOptions(includeTests: false)
         let analyzerWithoutTests = SwiftAnalyzer(options: optionsWithoutTests, directory: tempDir.path)
-        let filesWithoutTests = getSwiftFiles(in: tempDir, includeTests: false)
+        let filesWithoutTests = await getSwiftFiles(in: tempDir, includeTests: false)
         await analyzerWithoutTests.analyzeFiles(filesWithoutTests)
 
         #expect(filesWithoutTests.count == 1)
 
         let optionsWithTests = AnalyzerOptions(includeTests: true)
         let analyzerWithTests = SwiftAnalyzer(options: optionsWithTests, directory: tempDir.path)
-        let filesWithTests = getSwiftFiles(in: tempDir, includeTests: true)
+        let filesWithTests = await getSwiftFiles(in: tempDir, includeTests: true)
         await analyzerWithTests.analyzeFiles(filesWithTests)
 
         #expect(filesWithTests.count == 2)

@@ -28,7 +28,7 @@ struct FileHelperTests {
         let jsonFile = tempDir.appendingPathComponent("config.json")
         try "{}".write(to: jsonFile, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
         
         #expect(files.count == 2)
         #expect(files.allSatisfy { $0.pathExtension == "swift" })
@@ -50,7 +50,7 @@ struct FileHelperTests {
         let buildFile = buildDir.appendingPathComponent("Build.swift")
         try "// build file".write(to: buildFile, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
         
         #expect(files.count == 1)
         #expect(files.first?.lastPathComponent == "Regular.swift")
@@ -70,7 +70,7 @@ struct FileHelperTests {
         let testFile = tempDir.appendingPathComponent("RegularTest.swift")
         try "// test".write(to: testFile, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir)
+        let files = await getSwiftFiles(in: tempDir)
         
         #expect(files.count == 1)
         #expect(files.first?.lastPathComponent == "Regular.swift")
@@ -90,7 +90,7 @@ struct FileHelperTests {
         let testFile = tempDir.appendingPathComponent("RegularTest.swift")
         try "// test".write(to: testFile, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
         
         #expect(files.count == 2)
     }
@@ -155,7 +155,7 @@ struct FileHelperTests {
         let nestedFile = nestedDir.appendingPathComponent("Nested.swift")
         try "// nested".write(to: nestedFile, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
         
         #expect(files.count == 3)
     }
@@ -168,7 +168,7 @@ struct FileHelperTests {
             try? FileManager.default.removeItem(at: tempDir)
         }
         
-        let files = getSwiftFiles(in: tempDir, includeTests: true)
+        let files = await getSwiftFiles(in: tempDir, includeTests: true)
         
         #expect(files.isEmpty)
     }
@@ -195,7 +195,7 @@ struct FileHelperTests {
         let testFile3 = testsDir.appendingPathComponent("SomeFile.swift")
         try "// test 3".write(to: testFile3, atomically: true, encoding: .utf8)
         
-        let files = getSwiftFiles(in: tempDir)
+        let files = await getSwiftFiles(in: tempDir)
         
         #expect(files.count == 1)
         #expect(files.first?.lastPathComponent == "Regular.swift")
