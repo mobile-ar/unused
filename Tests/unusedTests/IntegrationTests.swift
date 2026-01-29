@@ -7,72 +7,74 @@ import Foundation
 @testable import unused
 
 struct IntegrationTests {
-    
+
     @Test func testCompleteWorkflow() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        
+
         defer {
             try? FileManager.default.removeItem(at: tempDir)
         }
-        
+
         let testSwiftFile = tempDir.appendingPathComponent("Test.swift")
         let swiftContent = """
         class TestClass {
             func usedFunction() {
                 print("Hello")
             }
-            
+
             func unusedFunction() {
                 print("Never called")
             }
-            
+
             var usedVariable = "used"
             var unusedVariable = "unused"
         }
-        
+
         let instance = TestClass()
         instance.usedFunction()
         print(instance.usedVariable)
         """
-        
+
         try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
-        
+
         let options = AnalyzerOptions(
             includeOverrides: false,
             includeProtocols: false,
             includeObjc: false,
             showExcluded: false
         )
-        
+
         let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
         await analyzer.analyzeFiles([testSwiftFile])
-        
-        let unusedFilePath = tempDir.appendingPathComponent(".unused")
+
+        let unusedFilePath = tempDir.appendingPathComponent(ReportService.reportFileName)
         #expect(FileManager.default.fileExists(atPath: unusedFilePath.path))
-        
-        let csvContent = try String(contentsOf: unusedFilePath, encoding: .utf8)
-        #expect(csvContent.contains("id,name,type,file,line,exclusionReason,parentType"))
-        
-        let declarations = try CSVWriter.read(from: tempDir.path)
-        #expect(declarations.count > 0)
-        
-        let hasUnusedFunction = declarations.contains { $0.declaration.name.contains("unused") && $0.declaration.type == .function }
-        let hasUnusedVariable = declarations.contains { $0.declaration.name.contains("unused") && $0.declaration.type == .variable }
-        
+
+        let jsonContent = try String(contentsOf: unusedFilePath, encoding: .utf8)
+        #expect(jsonContent.contains("\"version\""))
+        #expect(jsonContent.contains("\"unused\""))
+
+        let report = try ReportService.read(from: tempDir.path)
+        #expect(report.unused.count > 0 || report.excluded.totalCount > 0)
+
+        let hasUnusedFunction = report.unused.contains { $0.name.contains("unused") && $0.type == .function }
+        let hasUnusedVariable = report.unused.contains { $0.name.contains("unused") && $0.type == .variable }
+
         #expect(hasUnusedFunction || hasUnusedVariable)
     }
-    
-    @Test func testCSVPersistence() async throws {
+
+    @Test func testReportPersistence() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        
+
         defer {
             try? FileManager.default.removeItem(at: tempDir)
         }
-        
-        let declarations = [
-            Declaration(
+
+        let unusedItems = [
+            ReportItem(
+                id: 1,
                 name: "testFunc1",
                 type: .function,
                 file: "/test/file1.swift",
@@ -80,55 +82,73 @@ struct IntegrationTests {
                 exclusionReason: .none,
                 parentType: nil
             ),
-            Declaration(
-                name: "testFunc2",
-                type: .function,
-                file: "/test/file2.swift",
-                line: 20,
-                exclusionReason: .override,
-                parentType: "MyClass"
-            ),
-            Declaration(
+            ReportItem(
+                id: 2,
                 name: "testVar",
                 type: .variable,
                 file: "/test/file3.swift",
                 line: 30,
-                exclusionReason: .protocolImplementation,
+                exclusionReason: .none,
                 parentType: nil
             )
         ]
-        
-        try CSVWriter.write(report: declarations, to: tempDir.path)
-        
-        let readDeclarations = try CSVWriter.read(from: tempDir.path)
-        
-        #expect(readDeclarations.count == 3)
-        
-        for (index, original) in declarations.enumerated() {
-            let read = readDeclarations[index]
-            #expect(read.id == index + 1)
-            #expect(read.declaration.name == original.name)
-            #expect(read.declaration.type == original.type)
-            #expect(read.declaration.file == original.file)
-            #expect(read.declaration.line == original.line)
-            #expect(read.declaration.exclusionReason == original.exclusionReason)
-            #expect(read.declaration.parentType == original.parentType)
-        }
+
+        let excludedItems = ExcludedItems(
+            overrides: [
+                ReportItem(
+                    id: 3,
+                    name: "testFunc2",
+                    type: .function,
+                    file: "/test/file2.swift",
+                    line: 20,
+                    exclusionReason: .override,
+                    parentType: "MyClass"
+                )
+            ],
+            protocolImplementations: [],
+            objcItems: []
+        )
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: excludedItems,
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        try ReportService.write(report: report, to: tempDir.path)
+
+        let readReport = try ReportService.read(from: tempDir.path)
+
+        #expect(readReport.unused.count == 2)
+        #expect(readReport.excluded.overrides.count == 1)
+
+        #expect(readReport.unused[0].id == 1)
+        #expect(readReport.unused[0].name == "testFunc1")
+        #expect(readReport.unused[0].type == .function)
+        #expect(readReport.unused[0].file == "/test/file1.swift")
+        #expect(readReport.unused[0].line == 10)
+
+        #expect(readReport.excluded.overrides[0].id == 3)
+        #expect(readReport.excluded.overrides[0].name == "testFunc2")
+        #expect(readReport.excluded.overrides[0].exclusionReason == .override)
+        #expect(readReport.excluded.overrides[0].parentType == "MyClass")
     }
-    
+
     @Test func testOpenCommandWorkflow() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        
+
         defer {
             try? FileManager.default.removeItem(at: tempDir)
         }
-        
+
         let testFile = tempDir.appendingPathComponent("RealFile.swift")
         try "// Real Swift File\nfunc realFunction() {}\n".write(to: testFile, atomically: true, encoding: .utf8)
-        
-        let declarations = [
-            Declaration(
+
+        let unusedItems = [
+            ReportItem(
+                id: 1,
                 name: "realFunction",
                 type: .function,
                 file: testFile.path,
@@ -136,7 +156,8 @@ struct IntegrationTests {
                 exclusionReason: .none,
                 parentType: nil
             ),
-            Declaration(
+            ReportItem(
+                id: 2,
                 name: "anotherFunction",
                 type: .function,
                 file: testFile.path,
@@ -145,36 +166,44 @@ struct IntegrationTests {
                 parentType: nil
             )
         ]
-        
-        try CSVWriter.write(report: declarations, to: tempDir.path)
-        
-        let results = try CSVWriter.read(from: tempDir.path)
-        
-        #expect(results.count == 2)
-        
-        let firstEntry = results.first(where: { $0.id == 1 })
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        try ReportService.write(report: report, to: tempDir.path)
+
+        let readReport = try ReportService.read(from: tempDir.path)
+
+        #expect(readReport.unused.count == 2)
+
+        let firstEntry = readReport.item(withId: 1)
         #expect(firstEntry != nil)
-        #expect(firstEntry?.declaration.name == "realFunction")
-        #expect(firstEntry?.declaration.file == testFile.path)
-        #expect(firstEntry?.declaration.line == 2)
-        
-        let secondEntry = results.first(where: { $0.id == 2 })
+        #expect(firstEntry?.name == "realFunction")
+        #expect(firstEntry?.file == testFile.path)
+        #expect(firstEntry?.line == 2)
+
+        let secondEntry = readReport.item(withId: 2)
         #expect(secondEntry != nil)
-        #expect(secondEntry?.declaration.name == "anotherFunction")
+        #expect(secondEntry?.name == "anotherFunction")
     }
-    
+
     @Test func testLargeDataset() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        
+
         defer {
             try? FileManager.default.removeItem(at: tempDir)
         }
-        
-        var declarations: [Declaration] = []
+
+        var unusedItems: [ReportItem] = []
         for i in 1...100 {
-            declarations.append(
-                Declaration(
+            unusedItems.append(
+                ReportItem(
+                    id: i,
                     name: "function\(i)",
                     type: .function,
                     file: "/path/to/file\(i).swift",
@@ -184,18 +213,25 @@ struct IntegrationTests {
                 )
             )
         }
-        
-        try CSVWriter.write(report: declarations, to: tempDir.path)
-        let results = try CSVWriter.read(from: tempDir.path)
-        
-        #expect(results.count == 100)
-        
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        try ReportService.write(report: report, to: tempDir.path)
+        let readReport = try ReportService.read(from: tempDir.path)
+
+        #expect(readReport.unused.count == 100)
+
         for i in 1...100 {
-            let entry = results.first(where: { $0.id == i })
+            let entry = readReport.item(withId: i)
             #expect(entry != nil)
-            #expect(entry?.declaration.name == "function\(i)")
-            #expect(entry?.declaration.line == i * 10)
+            #expect(entry?.name == "function\(i)")
+            #expect(entry?.line == i * 10)
         }
     }
-    
+
 }

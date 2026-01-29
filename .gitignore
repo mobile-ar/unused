@@ -79,4 +79,4 @@ playground.xcworkspace
 .env.*.local
 
 # Unused
-.unused
+.unused.json

@@ -30,10 +30,10 @@ class SwiftAnalyzer {
             printProgressBar(prefix: "Analyzing protocols...", current: index + 1, total: totalFiles)
             collectProtocols(at: file, using: protocolVisitor)
         }
-        
+
         // Resolve external protocols via SourceKit
         await protocolVisitor.resolveExternalProtocols()
-        
+
         // Merge all protocol requirements
         for (protocolName, methods) in protocolVisitor.protocolRequirements {
             protocolRequirements[protocolName, default: Set()].formUnion(methods)
@@ -54,14 +54,13 @@ class SwiftAnalyzer {
         }
         print("")
 
-        // Report
-        let report = report()
+        // Generate and write report
+        let report = generateReport()
 
-        // Write to CSV
         do {
-            try CSVWriter.write(report: report, to: directory)
+            try ReportService.write(report: report, to: directory)
         } catch {
-            print("Error writing .unused file: \(error)".red.bold)
+            print("Error writing .unused.json file: \(error)".red.bold)
         }
     }
 
@@ -140,7 +139,7 @@ class SwiftAnalyzer {
         }
     }
 
-    private func report() -> [Declaration] {
+    private func generateReport() -> Report {
         let unusedFunctions = declarations.filter {
             $0.type == .function &&
             !usedIdentifiers.contains($0.name) &&
@@ -157,102 +156,146 @@ class SwiftAnalyzer {
             shouldInclude($0)
         }
 
-        // Get excluded items
+        // Get excluded items (items that would be unused but are excluded by options)
         let excludedOverrides = declarations.filter {
-            $0.exclusionReason == .override && !options.includeOverrides
+            $0.type == .function &&
+            !usedIdentifiers.contains($0.name) &&
+            $0.exclusionReason == .override &&
+            !options.includeOverrides
         }
         let excludedProtocols = declarations.filter {
-            $0.exclusionReason == .protocolImplementation && !options.includeProtocols
+            $0.type == .function &&
+            !usedIdentifiers.contains($0.name) &&
+            $0.exclusionReason == .protocolImplementation &&
+            !options.includeProtocols
         }
         let excludedObjc = declarations.filter {
+            !usedIdentifiers.contains($0.name) &&
             ($0.exclusionReason == .objcAttribute ||
              $0.exclusionReason == .ibAction ||
-             $0.exclusionReason == .ibOutlet) && !options.includeObjc
+             $0.exclusionReason == .ibOutlet) &&
+            !options.includeObjc
         }
 
-        let totalFindings = unusedFunctions.count + unusedVariables.count + unusedClasses.count
-        let idWidth = String(totalFindings).count
+        // Assign IDs to all items
         var currentId = 1
+        let unusedAll = unusedFunctions + unusedVariables + unusedClasses
 
-        if !unusedFunctions.isEmpty {
+        // Calculate total items for ID width formatting
+        let totalItems = unusedAll.count + excludedOverrides.count + excludedProtocols.count + excludedObjc.count
+        let idWidth = max(1, String(totalItems).count)
+
+        // Create report items for unused declarations
+        var unusedItems: [ReportItem] = []
+        for declaration in unusedAll {
+            unusedItems.append(ReportItem(id: currentId, declaration: declaration))
+            currentId += 1
+        }
+
+        // Create report items for excluded declarations
+        var excludedOverrideItems: [ReportItem] = []
+        for declaration in excludedOverrides {
+            excludedOverrideItems.append(ReportItem(id: currentId, declaration: declaration))
+            currentId += 1
+        }
+
+        var excludedProtocolItems: [ReportItem] = []
+        for declaration in excludedProtocols {
+            excludedProtocolItems.append(ReportItem(id: currentId, declaration: declaration))
+            currentId += 1
+        }
+
+        var excludedObjcItems: [ReportItem] = []
+        for declaration in excludedObjc {
+            excludedObjcItems.append(ReportItem(id: currentId, declaration: declaration))
+            currentId += 1
+        }
+
+        let testFileCount = countExcludedTestFiles()
+
+        // Print unused items
+        let unusedFunctionItems = unusedItems.filter { $0.type == .function }
+        let unusedVariableItems = unusedItems.filter { $0.type == .variable }
+        let unusedClassItems = unusedItems.filter { $0.type == .class }
+
+        if !unusedFunctionItems.isEmpty {
             print("\nUnused Functions:".peach.bold)
-            for item in unusedFunctions {
+            for item in unusedFunctionItems {
                 let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
-                let idString = String(format: "%\(idWidth)d", currentId)
+                let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
-                currentId += 1
             }
         }
 
-        if !unusedVariables.isEmpty {
+        if !unusedVariableItems.isEmpty {
             print("\nUnused Variables:".mauve.bold)
-            for item in unusedVariables {
+            for item in unusedVariableItems {
                 let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".gray : ""
-                let idString = String(format: "%\(idWidth)d", currentId)
+                let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
-                currentId += 1
             }
         }
 
-        if !unusedClasses.isEmpty {
+        if !unusedClassItems.isEmpty {
             print("\nUnused Classes:".pink.bold)
-            for item in unusedClasses {
-                let idString = String(format: "%\(idWidth)d", currentId)
+            for item in unusedClassItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
-                currentId += 1
             }
         }
 
         // Show exclusion summary
-        let totalExcluded = excludedOverrides.count + excludedProtocols.count + excludedObjc.count
-        let testFileCount = countExcludedTestFiles()
+        let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count
 
         if totalExcluded > 0 || testFileCount > 0 {
             print("\nExcluded from results:".teal.bold)
-            if !excludedOverrides.isEmpty {
-                print("  - ".overlay0 + "\(excludedOverrides.count)".yellow + " override(s)".subtext0)
+            if !excludedOverrideItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedOverrideItems.count)".yellow + " override(s)".subtext0)
             }
-            if !excludedProtocols.isEmpty {
-                print("  - ".overlay0 + "\(excludedProtocols.count)".yellow + " protocol implementation(s)".subtext0)
+            if !excludedProtocolItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedProtocolItems.count)".yellow + " protocol implementation(s)".subtext0)
             }
-            if !excludedObjc.isEmpty {
-                print("  - ".overlay0 + "\(excludedObjc.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            if !excludedObjcItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
             }
             if testFileCount > 0 {
                 print("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
             }
 
             if options.showExcluded {
-                if !excludedOverrides.isEmpty {
+                if !excludedOverrideItems.isEmpty {
                     print("\n  Overrides:".peach)
-                    for item in excludedOverrides {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    for item in excludedOverrideItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
 
-                if !excludedProtocols.isEmpty {
+                if !excludedProtocolItems.isEmpty {
                     print("\n  Protocol Implementations:".mauve)
-                    for item in excludedProtocols {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    for item in excludedProtocolItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
 
-                if !excludedObjc.isEmpty {
+                if !excludedObjcItems.isEmpty {
                     print("\n  @objc/@IBAction/@IBOutlet:".pink)
-                    for item in excludedObjc {
-                        print("    - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    for item in excludedObjcItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
             }
 
             var flags: [String] = []
-            if !options.includeOverrides && !excludedOverrides.isEmpty {
+            if !options.includeOverrides && !excludedOverrideItems.isEmpty {
                 flags.append("--include-overrides")
             }
-            if !options.includeProtocols && !excludedProtocols.isEmpty {
+            if !options.includeProtocols && !excludedProtocolItems.isEmpty {
                 flags.append("--include-protocols")
             }
-            if !options.includeObjc && !excludedObjc.isEmpty {
+            if !options.includeObjc && !excludedObjcItems.isEmpty {
                 flags.append("--include-objc")
             }
             if !options.includeTests && testFileCount > 0 {
@@ -267,7 +310,7 @@ class SwiftAnalyzer {
             }
         }
 
-        if unusedFunctions.isEmpty && unusedVariables.isEmpty && unusedClasses.isEmpty {
+        if unusedItems.isEmpty {
             if totalExcluded > 0 {
                 print("\nNo unused code found (excluding \(totalExcluded) override/protocol/framework items)!".green.bold)
             } else {
@@ -275,7 +318,18 @@ class SwiftAnalyzer {
             }
         }
 
-        return unusedFunctions + unusedVariables + unusedClasses
+        let excludedItems = ExcludedItems(
+            overrides: excludedOverrideItems,
+            protocolImplementations: excludedProtocolItems,
+            objcItems: excludedObjcItems
+        )
+
+        return Report(
+            unused: unusedItems,
+            excluded: excludedItems,
+            options: ReportOptions(from: options),
+            testFilesExcluded: testFileCount
+        )
     }
 
     private func countExcludedTestFiles() -> Int {

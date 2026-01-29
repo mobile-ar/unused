@@ -2,13 +2,13 @@
 //  Created by Fernando Romiti on 30/11/2025.
 //
 
-enum DeclarationType: String {
+enum DeclarationType: String, Codable {
     case function
     case variable
     case `class`
 }
 
-enum ExclusionReason: String {
+enum ExclusionReason: String, Codable {
     case override
     case protocolImplementation
     case objcAttribute
@@ -40,14 +40,6 @@ struct Declaration {
 
     var shouldExcludeByDefault: Bool {
         return exclusionReason != .none
-    }
-
-    func toCSV(id: Int) -> String {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        let escapedFile = file.replacingOccurrences(of: "\"", with: "\"\"")
-        let escapedParent = (parentType ?? "").replacingOccurrences(of: "\"", with: "\"\"")
-
-        return "\(id),\"\(escapedName)\",\"\(type)\",\"\(escapedFile)\",\(line),\"\(exclusionReason)\",\"\(escapedParent)\""
     }
 
 }

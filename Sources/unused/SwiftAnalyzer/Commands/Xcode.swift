@@ -14,15 +14,11 @@ struct Xcode: ParsableCommand {
     @Argument(help: "The ID of the unused declaration to open")
     var id: Int
 
-    @Argument(help: "The directory containing the .unused file (defaults to current directory)")
+    @Argument(help: "The directory containing the .unused.json file (defaults to current directory)")
     var directory: String = FileManager.default.currentDirectoryPath
 
     func run() throws {
-        try EditorOpener.open(
-            id: id,
-            inDirectory: directory,
-            using: .xcode
-        )
+        try EditorOpener.open(id: id, inDirectory: directory, using: .xcode)
     }
 
 }

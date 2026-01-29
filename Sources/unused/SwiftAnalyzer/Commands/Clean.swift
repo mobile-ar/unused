@@ -8,10 +8,10 @@ import Foundation
 struct Clean: ParsableCommand {
 
     static let configuration = CommandConfiguration(
-        abstract: "Clean up all .unused files from the specified directory"
+        abstract: "Clean up all .unused.json files from the specified directory"
     )
 
-    @Argument(help: "The directory to clean .unused files from (defaults to current directory)")
+    @Argument(help: "The directory to clean .unused.json files from (defaults to current directory)")
     var directory: String = FileManager.default.currentDirectoryPath
 
     @Flag(name: .long, help: "Perform a dry run without deleting files")
@@ -19,7 +19,7 @@ struct Clean: ParsableCommand {
 
     func run() throws {
         print("Unused v\(Unused.configuration.version)".blue.bold)
-        print("Cleaning .unused files...")
+        print("Cleaning .unused.json files...")
 
         let directoryURL = URL(fileURLWithPath: directory)
 
@@ -32,11 +32,11 @@ struct Clean: ParsableCommand {
         let unusedFiles = getUnusedFiles(in: directoryURL)
 
         if unusedFiles.isEmpty {
-            print("No .unused files found".yellow)
+            print("No .unused.json files found".yellow)
             return
         }
 
-        print("Found \(unusedFiles.count) .unused file(s)".teal)
+        print("Found \(unusedFiles.count) .unused.json file(s)".teal)
 
         if dryRun {
             print("\nDry run - files that would be deleted:".yellow.bold)
@@ -76,7 +76,7 @@ struct Clean: ParsableCommand {
         )
 
         while let element = enumerator?.nextObject() as? URL {
-            if !element.pathComponents.contains(".build") && element.lastPathComponent == ".unused" {
+            if !element.pathComponents.contains(".build") && element.lastPathComponent == ReportService.reportFileName {
                 unusedFiles.append(element)
             }
         }

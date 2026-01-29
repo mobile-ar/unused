@@ -30,11 +30,7 @@ enum Editor {
 
 struct EditorOpener {
 
-    static func open(
-        id: Int,
-        inDirectory directory: String,
-        using editor: Editor
-    ) throws {
+    static func open(id: Int, inDirectory directory: String, using editor: Editor) throws {
         let directoryURL = URL(fileURLWithPath: directory)
 
         guard let resourceValues = try? directoryURL.resourceValues(forKeys: [.isDirectoryKey]),
@@ -44,23 +40,18 @@ struct EditorOpener {
             throw ValidationError("Directory does not exist: \(directory)".red)
         }
 
-        let unusedFilePath = directoryURL.appendingPathComponent(".unused").path
-        guard FileManager.default.fileExists(atPath: unusedFilePath) else {
-            throw ValidationError(
-                ".unused file not found in directory: \(directory)".red
-                    + "\nRun 'unused analyze' first.".peach)
+        guard ReportService.reportExists(in: directory) else {
+            throw ValidationError(".unused.json file not found in directory: \(directory)".red + "\nRun 'unused analyze' first.".peach)
         }
 
-        let declarations = try CSVWriter.read(from: directory)
+        let report = try ReportService.read(from: directory)
 
-        guard let entry = declarations.first(where: { $0.id == id }) else {
-            throw ValidationError(
-                "ID \(id) not found in .unused file.".red
-                    + " Valid IDs: 1-\(declarations.count)".peach)
+        guard let entry = report.item(withId: id) else {
+            throw ValidationError("ID \(id) not found in .unused.json file.".red + " Valid IDs: 1-\(report.maxId)".peach)
         }
 
-        let filePath = entry.declaration.file
-        let lineNumber = entry.declaration.line
+        let filePath = entry.file
+        let lineNumber = entry.line
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: editor.executable)
@@ -80,4 +71,5 @@ struct EditorOpener {
                 "Error executing \(editor.executable): \(error.localizedDescription)".red)
         }
     }
+
 }
