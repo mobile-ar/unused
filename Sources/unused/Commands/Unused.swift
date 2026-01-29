@@ -11,7 +11,7 @@ struct Unused: AsyncParsableCommand {
         commandName: "unused",
         abstract: "Find unused Swift declarations in your codebase",
         version: "0.0.1",
-        subcommands: [Analyze.self, Clean.self, InstallCompletions.self, Xcode.self, Zed.self],
+        subcommands: [Analyze.self, Clean.self, Filter.self, InstallCompletions.self, Xcode.self, Zed.self],
         defaultSubcommand: Analyze.self
     )
 

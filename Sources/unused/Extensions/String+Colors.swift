@@ -4,7 +4,6 @@
 
 extension String {
 
-    // Catppuccin Mocha colors because I like them, do I need permission to use them? Probably... not. :P
     var rosewater: String { return "\u{001B}[38;2;245;224;220m\(self)\u{001B}[0m" }
     var flamingo: String { return "\u{001B}[38;2;242;205;205m\(self)\u{001B}[0m" }
     var pink: String { return "\u{001B}[38;2;245;194;231m\(self)\u{001B}[0m" }
