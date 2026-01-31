@@ -28,9 +28,14 @@ enum Editor {
     }
 }
 
-struct EditorOpener {
+protocol EditorOpenerProtocol {
+    func open(id: Int, inDirectory directory: String, using editor: Editor) throws
+    func open(filePath: String, lineNumber: Int, editor: Editor) throws
+}
 
-    static func open(id: Int, inDirectory directory: String, using editor: Editor) throws {
+struct EditorOpener: EditorOpenerProtocol {
+
+    func open(id: Int, inDirectory directory: String, using editor: Editor) throws {
         let directoryURL = URL(fileURLWithPath: directory)
 
         guard let resourceValues = try? directoryURL.resourceValues(forKeys: [.isDirectoryKey]),
@@ -50,9 +55,10 @@ struct EditorOpener {
             throw ValidationError("ID \(id) not found in .unused.json file.".red + " Valid IDs: 1-\(report.maxId)".peach)
         }
 
-        let filePath = entry.file
-        let lineNumber = entry.line
+        try open(filePath: entry.file, lineNumber: entry.line, editor: editor)
+    }
 
+    func open(filePath: String, lineNumber: Int, editor: Editor) throws {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: editor.executable)
         task.arguments = editor.arguments(filePath: filePath, lineNumber: lineNumber)

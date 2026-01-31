@@ -14,8 +14,8 @@ struct Filter: AsyncParsableCommand {
     @Argument(help: "The directory containing the .unused.json report (defaults to current directory)")
     var directory: String = FileManager.default.currentDirectoryPath
 
-    @Option(name: .long, parsing: .upToNextOption, help: "Filter by specific item IDs (comma-separated or multiple values)")
-    var ids: [Int] = []
+    @Option(name: .long, help: "Filter by specific item IDs (e.g., '1-3 5 7-9' or '1,2,3')")
+    var ids: String?
 
     @Option(name: .shortAndLong, parsing: .upToNextOption, help: "Filter by declaration type: function, variable, class")
     var type: [String] = []
@@ -26,7 +26,7 @@ struct Filter: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Filter by declaration name pattern (regex)")
     var name: String?
 
-    @Flag(name: .shortAndLong, help: "Include excluded items (overrides, protocol implementations, etc.) in filter results")
+    @Flag(name: .long, help: "Include excluded items (overrides, protocol implementations, etc.) in filter results")
     var includeExcluded: Bool = false
 
     @Flag(name: .shortAndLong, help: "Delete the filtered declarations from source files")
@@ -38,6 +38,9 @@ struct Filter: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Skip confirmation prompt before deletion")
     var yolo: Bool = false
 
+    @Flag(name: .shortAndLong, help: "Interactively confirm each deletion one by one")
+    var interactive: Bool = false
+
     func run() async throws {
         print("Unused v\(Unused.configuration.version)".blue.bold)
 
@@ -48,9 +51,10 @@ struct Filter: AsyncParsableCommand {
         let report = try ReportService.read(from: directory)
 
         let parsedTypes = try parseTypes()
+        let parsedIds = try parseIds()
 
         let criteria = FilterCriteria(
-            ids: ids.isEmpty ? nil : ids,
+            ids: parsedIds.isEmpty ? nil : parsedIds,
             types: parsedTypes.isEmpty ? nil : parsedTypes,
             filePattern: file,
             namePattern: name,
@@ -82,6 +86,20 @@ struct Filter: AsyncParsableCommand {
 
         if delete || dryRun {
             try await performDeletion(items: filteredItems, dryRun: dryRun)
+        } else if interactive {
+            print("\nNote: --interactive requires --delete to perform deletions.".yellow)
+        }
+    }
+
+    private func parseIds() throws -> [Int] {
+        guard let idsString = ids else {
+            return []
+        }
+
+        do {
+            return try LineRangeParser.parseSorted(idsString)
+        } catch let error as LineRangeParserError {
+            throw ValidationError(error.localizedDescription)
         }
     }
 
@@ -149,6 +167,26 @@ struct Filter: AsyncParsableCommand {
             return
         }
 
+        var requestsToDelete: [DeletionRequest] = items.map { DeletionRequest(item: $0, mode: .fullDeclaration) }
+
+        if interactive {
+            let interactiveService = InteractiveDeleteService()
+            requestsToDelete = try interactiveService.confirmDeletions(items: items)
+
+            if requestsToDelete.isEmpty {
+                print("\nNo declarations selected for deletion.".yellow)
+                return
+            }
+
+            let fullCount = requestsToDelete.filter { $0.isFullDeclaration }.count
+            let partialCount = requestsToDelete.count - fullCount
+            if partialCount > 0 {
+                print("\n\(fullCount) full declaration(s) and \(partialCount) partial deletion(s) confirmed.".teal)
+            } else {
+                print("\n\(requestsToDelete.count) declaration(s) confirmed for deletion.".teal)
+            }
+            
+        }
         if !yolo {
             print("\nWARNING: This will permanently delete \(items.count) declaration(s) from your source files.".red.bold)
             print("Do you want to proceed? (y/n): ".lavender, terminator: "")
@@ -163,7 +201,7 @@ struct Filter: AsyncParsableCommand {
 
         print("\nDeleting declarations...".peach)
 
-        let result = await codeDeleter.delete(items: items, dryRun: false)
+        let result = await codeDeleter.delete(requests: requestsToDelete, dryRun: false)
 
         print("\nDeletion complete:".bold)
         print("  Files processed: \(result.totalFiles)".subtext0)

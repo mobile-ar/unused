@@ -562,4 +562,206 @@ struct CodeDeleterServiceTests {
         #expect(result.successfulFiles == 2)
         #expect(result.failedFiles == 1)
     }
+
+    @Test func testDeleteWithFullDeclarationRequest() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+            class MyClass {
+                func unusedFunction() {
+                    print("unused")
+                }
+
+                func usedFunction() {
+                    print("used")
+                }
+            }
+            """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "unusedFunction",
+            type: .function,
+            file: filePath,
+            line: 2,
+            exclusionReason: .none,
+            parentType: "MyClass"
+        )
+
+        let request = DeletionRequest(item: item, mode: .fullDeclaration)
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: [request], dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let newContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!newContent.contains("unusedFunction"))
+        #expect(newContent.contains("usedFunction"))
+    }
+
+    @Test func testDeleteWithSpecificLinesRequest() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+            line 1
+            line 2
+            line 3
+            line 4
+            line 5
+            """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "testItem",
+            type: .function,
+            file: filePath,
+            line: 2,
+            exclusionReason: .none,
+            parentType: nil
+        )
+
+        let request = DeletionRequest(item: item, mode: .specificLines([2, 3]))
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: [request], dryRun: false)
+
+        #expect(result.totalDeleted == 2)
+        #expect(result.successfulFiles == 1)
+
+        let newContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(newContent.contains("line 1"))
+        #expect(!newContent.contains("line 2"))
+        #expect(!newContent.contains("line 3"))
+        #expect(newContent.contains("line 4"))
+        #expect(newContent.contains("line 5"))
+    }
+
+    @Test func testDeleteWithMixedRequests() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+            class MyClass {
+                func unusedFunction() {
+                    print("unused")
+                }
+
+                func partialFunction() {
+                    print("line 1")
+                    print("line 2")
+                    print("line 3")
+                }
+            }
+            """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let item1 = ReportItem(
+            id: 1,
+            name: "unusedFunction",
+            type: .function,
+            file: filePath,
+            line: 2,
+            exclusionReason: .none,
+            parentType: "MyClass"
+        )
+
+        let item2 = ReportItem(
+            id: 2,
+            name: "partialFunction",
+            type: .function,
+            file: filePath,
+            line: 6,
+            exclusionReason: .none,
+            parentType: "MyClass"
+        )
+
+        let requests = [
+            DeletionRequest(item: item1, mode: .fullDeclaration),
+            DeletionRequest(item: item2, mode: .specificLines([7, 8]))
+        ]
+
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: requests, dryRun: false)
+
+        #expect(result.successfulFiles == 1)
+        #expect(result.totalDeleted >= 1)
+
+        let newContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!newContent.contains("unusedFunction"))
+    }
+
+    @Test func testDeleteRequestsDryRun() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+            line 1
+            line 2
+            line 3
+            """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "testItem",
+            type: .function,
+            file: filePath,
+            line: 1,
+            exclusionReason: .none,
+            parentType: nil
+        )
+
+        let request = DeletionRequest(item: item, mode: .specificLines([2]))
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: [request], dryRun: true)
+
+        #expect(result.totalDeleted == 1)
+
+        let newContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(newContent.contains("line 2"))
+    }
+
+    @Test func testPreviewWithDeletionRequests() async throws {
+        let item1 = ReportItem(
+            id: 1,
+            name: "func1",
+            type: .function,
+            file: "/path/to/File.swift",
+            line: 10,
+            exclusionReason: .none,
+            parentType: nil
+        )
+
+        let item2 = ReportItem(
+            id: 2,
+            name: "func2",
+            type: .function,
+            file: "/path/to/File.swift",
+            line: 20,
+            exclusionReason: .none,
+            parentType: nil
+        )
+
+        let requests = [
+            DeletionRequest(item: item1, mode: .fullDeclaration),
+            DeletionRequest(item: item2, mode: .specificLines([20, 21, 22]))
+        ]
+
+        let service = CodeDeleterService()
+        let preview = service.preview(requests: requests)
+
+        #expect(preview.contains("File: /path/to/File.swift"))
+        #expect(preview.contains("full declaration"))
+        #expect(preview.contains("specific lines"))
+        #expect(preview.contains("func1"))
+        #expect(preview.contains("func2"))
+    }
 }

@@ -28,19 +28,70 @@ struct DeletionResult {
 
 struct CodeDeleterService {
 
+    private let lineDeleterService: LineDeleterService
+
+    init(lineDeleterService: LineDeleterService = LineDeleterService()) {
+        self.lineDeleterService = lineDeleterService
+    }
+
     /// Deletes the specified items from their source files
     /// - Parameters:
     ///   - items: The report items to delete
     ///   - dryRun: If true, only simulates deletion without modifying files
     /// - Returns: The result of the deletion operation
     func delete(items: [ReportItem], dryRun: Bool = false) async -> DeletionResult {
-        let groupedItems = Dictionary(grouping: items, by: \.file)
+        let requests = items.map { DeletionRequest(item: $0, mode: .fullDeclaration) }
+        return await delete(requests: requests, dryRun: dryRun)
+    }
+
+    /// Deletes based on deletion requests which may include full declarations or specific lines
+    /// - Parameters:
+    ///   - requests: The deletion requests specifying what to delete
+    ///   - dryRun: If true, only simulates deletion without modifying files
+    /// - Returns: The result of the deletion operation
+    func delete(requests: [DeletionRequest], dryRun: Bool = false) async -> DeletionResult {
+        let groupedRequests = Dictionary(grouping: requests, by: \.item.file)
         var fileResults: [FileDeletionResult] = []
         var totalDeleted = 0
         var successfulFiles = 0
 
-        for (filePath, fileItems) in groupedItems {
-            let result = await deleteFromFile(filePath: filePath, items: fileItems, dryRun: dryRun)
+        for (filePath, fileRequests) in groupedRequests {
+            let fullDeclarationRequests = fileRequests.filter { $0.isFullDeclaration }
+            let lineBasedRequests = fileRequests.filter { !$0.isFullDeclaration }
+
+            var fileDeletedCount = 0
+            var fileSuccess = true
+            var fileError: Error?
+
+            // Handle full declaration deletions
+            if !fullDeclarationRequests.isEmpty {
+                let items = fullDeclarationRequests.map(\.item)
+                let result = await deleteFromFile(filePath: filePath, items: items, dryRun: dryRun)
+                if result.success {
+                    fileDeletedCount += result.deletedCount
+                } else {
+                    fileSuccess = false
+                    fileError = result.error
+                }
+            }
+
+            // Handle line-based deletions
+            if !lineBasedRequests.isEmpty && fileSuccess {
+                let result = lineDeleterService.deleteLines(from: filePath, requests: lineBasedRequests, dryRun: dryRun)
+                if result.success {
+                    fileDeletedCount += result.deletedLineCount
+                } else {
+                    fileSuccess = false
+                    fileError = result.error
+                }
+            }
+
+            let result = FileDeletionResult(
+                filePath: filePath,
+                deletedCount: fileDeletedCount,
+                success: fileSuccess,
+                error: fileError
+            )
             fileResults.append(result)
 
             if result.success {
@@ -52,7 +103,7 @@ struct CodeDeleterService {
         return DeletionResult(
             fileResults: fileResults,
             totalDeleted: totalDeleted,
-            totalFiles: groupedItems.count,
+            totalFiles: groupedRequests.count,
             successfulFiles: successfulFiles
         )
     }
@@ -127,13 +178,28 @@ struct CodeDeleterService {
     /// - Parameter items: The report items to preview deletion for
     /// - Returns: A formatted string describing what would be deleted
     func preview(items: [ReportItem]) -> String {
-        let groupedItems = Dictionary(grouping: items, by: \.file)
+        let requests = items.map { DeletionRequest(item: $0, mode: .fullDeclaration) }
+        return preview(requests: requests)
+    }
+
+    /// Previews what would be deleted based on deletion requests
+    /// - Parameter requests: The deletion requests to preview
+    /// - Returns: A formatted string describing what would be deleted
+    func preview(requests: [DeletionRequest]) -> String {
+        let groupedRequests = Dictionary(grouping: requests, by: \.item.file)
         var lines: [String] = []
 
-        for (filePath, fileItems) in groupedItems.sorted(by: { $0.key < $1.key }) {
+        for (filePath, fileRequests) in groupedRequests.sorted(by: { $0.key < $1.key }) {
             lines.append("File: \(filePath)")
-            for item in fileItems.sorted(by: { $0.line < $1.line }) {
-                lines.append("  Line \(item.line): \(item.type.rawValue) '\(item.name)'")
+            for request in fileRequests.sorted(by: { $0.item.line < $1.item.line }) {
+                let item = request.item
+                switch request.mode {
+                case .fullDeclaration:
+                    lines.append("  Line \(item.line): \(item.type.rawValue) '\(item.name)' (full declaration)")
+                case .specificLines(let lineNumbers):
+                    let sortedLines = lineNumbers.sorted().map(String.init).joined(separator: ", ")
+                    lines.append("  Lines \(sortedLines): \(item.type.rawValue) '\(item.name)' (specific lines)")
+                }
             }
             lines.append("")
         }

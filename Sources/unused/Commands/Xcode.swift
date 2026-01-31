@@ -18,7 +18,7 @@ struct Xcode: ParsableCommand {
     var directory: String = FileManager.default.currentDirectoryPath
 
     func run() throws {
-        try EditorOpener.open(id: id, inDirectory: directory, using: .xcode)
+        try EditorOpener().open(id: id, inDirectory: directory, using: .xcode)
     }
 
 }
