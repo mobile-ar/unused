@@ -9,20 +9,19 @@ class DeclarationVisitor: SyntaxVisitor {
 
     var declarations: [Declaration] = []
     var typeProtocolConformance: [String: Set<String>] = [:]
+    var typePropertyDeclarations: [String: [(name: String, line: Int, filePath: String)]] = [:]
     let filePath: String
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
     private var currentTypeProtocols: Set<String> = []
     private var insideProtocol: Bool = false
     private var typeContextStack: [(name: String?, protocols: Set<String>)] = []
-    private let sourceFileContent: String
     private let sourceLocationConverter: SourceLocationConverter
 
-    init(filePath: String, protocolRequirements: [String: Set<String>], sourceFileContent: String) {
+    init(filePath: String, protocolRequirements: [String: Set<String>], sourceFile: SourceFileSyntax) {
         self.filePath = filePath
         self.protocolRequirements = protocolRequirements
-        self.sourceFileContent = sourceFileContent
-        self.sourceLocationConverter = SourceLocationConverter(fileName: filePath, tree: Parser.parse(source: sourceFileContent))
+        self.sourceLocationConverter = SourceLocationConverter(fileName: filePath, tree: sourceFile)
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -109,6 +108,10 @@ class DeclarationVisitor: SyntaxVisitor {
                     exclusionReason: exclusionReason,
                     parentType: currentTypeName
                 ))
+
+                if let typeName = currentTypeName {
+                    typePropertyDeclarations[typeName, default: []].append((name: name, line: lineNumber, filePath: filePath))
+                }
             }
         }
         return .visitChildren

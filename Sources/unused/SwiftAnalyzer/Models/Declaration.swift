@@ -14,6 +14,7 @@ enum ExclusionReason: String, Codable {
     case objcAttribute
     case ibAction
     case ibOutlet
+    case writeOnly
     case none
 
     var description: String {
@@ -23,6 +24,7 @@ enum ExclusionReason: String, Codable {
         case .objcAttribute: return "@objc"
         case .ibAction: return "@IBAction"
         case .ibOutlet: return "@IBOutlet"
+        case .writeOnly: return "write-only"
         case .none: return ""
         }
     }

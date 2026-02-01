@@ -35,7 +35,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -70,7 +70,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -108,7 +108,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -143,7 +143,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -188,7 +188,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -226,7 +226,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 
@@ -258,7 +258,7 @@ struct DeclarationVisitorTests {
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
             protocolRequirements: protocolVisitor.protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
 

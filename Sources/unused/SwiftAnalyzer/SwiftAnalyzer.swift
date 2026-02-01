@@ -11,6 +11,8 @@ class SwiftAnalyzer {
     private var usedIdentifiers = Set<String>()
     private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
     private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
+    private var typePropertyDeclarations: [String: [(name: String, line: Int, filePath: String)]] = [:] // type name -> property info
+    private var writeOnlyProperties: Set<PropertyUsageKey> = []
     private let options: AnalyzerOptions
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient?
@@ -41,9 +43,12 @@ class SwiftAnalyzer {
         }
 
         // Second pass: collect all declarations
+        var parsedFiles: [(url: URL, source: String, sourceFile: SourceFileSyntax)] = []
         for (index, file) in files.enumerated() {
             printProgressBar(prefix: "Collecting declarations...", current: index + 1, total: totalFiles)
-            collectDeclarations(at: file)
+            if let parsed = collectDeclarations(at: file) {
+                parsedFiles.append(parsed)
+            }
         }
         print("")
 
@@ -53,6 +58,23 @@ class SwiftAnalyzer {
             collectUsage(at: file)
         }
         print("")
+
+        // Fourth pass: detect write-only variables
+        var allPropertyReads: Set<PropertyUsageKey> = []
+        var allPropertyWrites: Set<PropertyUsageKey> = []
+        for (index, parsed) in parsedFiles.enumerated() {
+            printProgressBar(prefix: "Detecting write-only...", current: index + 1, total: parsedFiles.count)
+            let (reads, writes) = collectWriteOnlyInfo(
+                at: parsed.url,
+                source: parsed.source,
+                sourceFile: parsed.sourceFile
+            )
+            allPropertyReads.formUnion(reads)
+            allPropertyWrites.formUnion(writes)
+        }
+        print("")
+
+        writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
 
         // Generate and write report
         let report = generateReport()
@@ -73,17 +95,17 @@ class SwiftAnalyzer {
         visitor.walk(sourceFile)
     }
 
-    private func collectDeclarations(at url: URL) {
+    private func collectDeclarations(at url: URL) -> (url: URL, source: String, sourceFile: SourceFileSyntax)? {
         guard let source = try? String(contentsOf: url, encoding: .utf8) else {
             print("Error reading file: \(url.path)".red.bold)
-            return
+            return nil
         }
 
         let sourceFile = Parser.parse(source: source)
         let visitor = DeclarationVisitor(
             filePath: url.path,
             protocolRequirements: protocolRequirements,
-            sourceFileContent: source
+            sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
         declarations.append(contentsOf: visitor.declarations)
@@ -92,6 +114,13 @@ class SwiftAnalyzer {
         for (typeName, protocols) in visitor.typeProtocolConformance {
             typeProtocolConformance[typeName, default: Set()].formUnion(protocols)
         }
+
+        // Merge type property declarations
+        for (typeName, properties) in visitor.typePropertyDeclarations {
+            typePropertyDeclarations[typeName, default: []].append(contentsOf: properties)
+        }
+
+        return (url: url, source: source, sourceFile: sourceFile)
     }
 
     private func collectUsage(at url: URL) {
@@ -103,6 +132,33 @@ class SwiftAnalyzer {
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
         usedIdentifiers.formUnion(visitor.usedIdentifiers)
+    }
+
+    private func collectWriteOnlyInfo(
+        at url: URL,
+        source: String,
+        sourceFile: SourceFileSyntax
+    ) -> (reads: Set<PropertyUsageKey>, writes: Set<PropertyUsageKey>) {
+        let visitor = WriteOnlyVariableVisitor(
+            filePath: url.path,
+            typeProperties: typePropertyDeclarations
+        )
+        visitor.walk(sourceFile)
+        return (reads: visitor.propertyReads, writes: visitor.propertyWrites)
+    }
+
+    private func isWriteOnlyProperty(_ declaration: Declaration) -> Bool {
+        guard declaration.type == .variable,
+              let parentType = declaration.parentType else {
+            return false
+        }
+        let key = PropertyUsageKey(
+            filePath: declaration.file,
+            typeName: parentType,
+            propertyName: declaration.name,
+            line: declaration.line
+        )
+        return writeOnlyProperties.contains(key)
     }
 
     private func shouldInclude(_ declaration: Declaration) -> Bool {
@@ -118,6 +174,8 @@ class SwiftAnalyzer {
             return options.includeProtocols
         case .objcAttribute, .ibAction, .ibOutlet:
             return options.includeObjc
+        case .writeOnly:
+            return true // Write-only items are always included
         case .none:
             return true
         }
@@ -138,6 +196,22 @@ class SwiftAnalyzer {
             $0.type == .class &&
             !usedIdentifiers.contains($0.name) &&
             shouldInclude($0)
+        }
+
+        // Detect write-only variables (assigned but never read)
+        let writeOnlyVariables = declarations.filter {
+            $0.type == .variable &&
+            usedIdentifiers.contains($0.name) &&
+            isWriteOnlyProperty($0)
+        }.map { declaration in
+            Declaration(
+                name: declaration.name,
+                type: declaration.type,
+                file: declaration.file,
+                line: declaration.line,
+                exclusionReason: .writeOnly,
+                parentType: declaration.parentType
+            )
         }
 
         // Get excluded items (items that would be unused but are excluded by options)
@@ -163,7 +237,7 @@ class SwiftAnalyzer {
 
         // Assign IDs to all items
         var currentId = 1
-        let unusedAll = unusedFunctions + unusedVariables + unusedClasses
+        let unusedAll = unusedFunctions + unusedVariables + unusedClasses + writeOnlyVariables
 
         // Calculate total items for ID width formatting
         let totalItems = unusedAll.count + excludedOverrides.count + excludedProtocols.count + excludedObjc.count
@@ -199,7 +273,8 @@ class SwiftAnalyzer {
 
         // Print unused items
         let unusedFunctionItems = unusedItems.filter { $0.type == .function }
-        let unusedVariableItems = unusedItems.filter { $0.type == .variable }
+        let unusedVariableItems = unusedItems.filter { $0.type == .variable && $0.exclusionReason != .writeOnly }
+        let writeOnlyItems = unusedItems.filter { $0.exclusionReason == .writeOnly }
         let unusedClassItems = unusedItems.filter { $0.type == .class }
 
         if !unusedFunctionItems.isEmpty {
@@ -225,6 +300,14 @@ class SwiftAnalyzer {
             for item in unusedClassItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !writeOnlyItems.isEmpty {
+            print("\nWrite-Only Variables (assigned but never read):".lavender.bold)
+            for item in writeOnlyItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0)
             }
         }
 
