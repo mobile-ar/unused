@@ -102,6 +102,16 @@ class DeclarationVisitor: SyntaxVisitor {
                     }
                 }
 
+                // Check if this is a protocol implementation
+                if exclusionReason == .none, currentTypeName != nil {
+                    for protocolName in currentTypeProtocols {
+                        if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
+                            exclusionReason = .protocolImplementation
+                            break
+                        }
+                    }
+                }
+
                 let location = node.startLocation(converter: sourceLocationConverter)
                 let lineNumber = location.line
 
@@ -126,6 +136,90 @@ class DeclarationVisitor: SyntaxVisitor {
                 }
             }
         }
+        return .visitChildren
+    }
+
+    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+
+        let name = "subscript"
+        var exclusionReason: ExclusionReason = .none
+
+        // Check for override keyword
+        if node.modifiers.contains(where: { $0.name.text == "override" }) {
+            exclusionReason = .override
+        }
+
+        // Check if this is a protocol implementation
+        if exclusionReason == .none, currentTypeName != nil {
+            for protocolName in currentTypeProtocols {
+                if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
+                    exclusionReason = .protocolImplementation
+                    break
+                }
+            }
+        }
+
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+
+        declarations.append(Declaration(
+            name: name,
+            type: .function,
+            file: filePath,
+            line: lineNumber,
+            exclusionReason: exclusionReason,
+            parentType: currentTypeName
+        ))
+        return .visitChildren
+    }
+
+    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+
+        let name = "init"
+        var exclusionReason: ExclusionReason = .none
+
+        // Check for override keyword
+        if node.modifiers.contains(where: { $0.name.text == "override" }) {
+            exclusionReason = .override
+        }
+
+        // Check for @objc attribute
+        for attribute in node.attributes {
+            if case .attribute(let attr) = attribute {
+                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                if attrName == "objc" {
+                    exclusionReason = .objcAttribute
+                }
+            }
+        }
+
+        // Check if this is a protocol implementation
+        if exclusionReason == .none, currentTypeName != nil {
+            for protocolName in currentTypeProtocols {
+                if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
+                    exclusionReason = .protocolImplementation
+                    break
+                }
+            }
+        }
+
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+
+        declarations.append(Declaration(
+            name: name,
+            type: .function,
+            file: filePath,
+            line: lineNumber,
+            exclusionReason: exclusionReason,
+            parentType: currentTypeName
+        ))
         return .visitChildren
     }
 
@@ -207,6 +301,28 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visitPost(_ node: EnumDeclSyntax) {
+        popTypeContext()
+    }
+
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        let name = node.name.text
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+
+        declarations.append(Declaration(
+            name: name,
+            type: .class,
+            file: filePath,
+            line: lineNumber,
+            exclusionReason: .none,
+            parentType: nil
+        ))
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ActorDeclSyntax) {
         popTypeContext()
     }
 

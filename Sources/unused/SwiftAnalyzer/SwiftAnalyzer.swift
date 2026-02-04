@@ -17,12 +17,12 @@ class SwiftAnalyzer {
     private var projectPropertyWrappers: Set<String> = [] // property wrappers defined in the project
     private let options: AnalyzerOptions
     private let directory: String
-    private let swiftInterfaceClient: SwiftInterfaceClient?
+    private let swiftInterfaceClient: SwiftInterfaceClient
 
-    init(options: AnalyzerOptions = AnalyzerOptions(), directory: String) {
+    init(options: AnalyzerOptions = AnalyzerOptions(), directory: String, swiftInterfaceClient: SwiftInterfaceClient = SwiftInterfaceClient()) {
         self.options = options
         self.directory = directory
-        self.swiftInterfaceClient = SwiftInterfaceClient()
+        self.swiftInterfaceClient = swiftInterfaceClient
     }
 
     func analyzeFiles(_ files: [URL]) async {
@@ -41,10 +41,8 @@ class SwiftAnalyzer {
 
         // Collect property wrappers from imported modules
         // Include SwiftUICore because many SwiftUI property wrappers (State, Binding, etc.) are defined there
-        if let client = swiftInterfaceClient {
-            let modulesToQuery = protocolVisitor.importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
-            propertyWrappers = await client.getAllPropertyWrappers(fromModules: modulesToQuery)
-        }
+        let modulesToQuery = protocolVisitor.importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
+        propertyWrappers = await swiftInterfaceClient.getAllPropertyWrappers(fromModules: modulesToQuery)
 
         // Merge all protocol requirements
         for (protocolName, methods) in protocolVisitor.protocolRequirements {

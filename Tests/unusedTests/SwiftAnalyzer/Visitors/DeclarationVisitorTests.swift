@@ -416,4 +416,458 @@ struct DeclarationVisitorTests {
         #expect(equalsOperator?.exclusionReason == .protocolImplementation)
         #expect(equalsOperator?.parentType == "Point")
     }
+
+    @Test
+    func testVariableImplementingExternalProtocol() async throws {
+        let source = """
+        import Foundation
+
+        enum MyError: Error, LocalizedError {
+            case somethingWentWrong
+
+            var errorDescription: String? {
+                return "Something went wrong"
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let errorDescription = visitor.declarations.first { $0.name == "errorDescription" }
+        #expect(errorDescription != nil)
+        #expect(errorDescription?.exclusionReason == .protocolImplementation)
+        #expect(errorDescription?.parentType == "MyError")
+    }
+
+    @Test
+    func testVariableImplementingProjectProtocol() async throws {
+        let source = """
+        protocol Describable {
+            var title: String { get }
+            var subtitle: String { get }
+        }
+
+        struct Item: Describable {
+            var title: String {
+                return "Item Title"
+            }
+            var subtitle: String {
+                return "Item Subtitle"
+            }
+            var internalValue: Int = 0
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let title = visitor.declarations.first { $0.name == "title" }
+        let subtitle = visitor.declarations.first { $0.name == "subtitle" }
+        let internalValue = visitor.declarations.first { $0.name == "internalValue" }
+
+        #expect(title?.exclusionReason == .protocolImplementation)
+        #expect(subtitle?.exclusionReason == .protocolImplementation)
+        #expect(internalValue?.exclusionReason == ExclusionReason.none)
+    }
+
+    @Test
+    func testDescriptionPropertyMarkedAsProtocolImplementation() async throws {
+        let source = """
+        struct Person: CustomStringConvertible {
+            let name: String
+
+            var description: String {
+                return "Person: \\(name)"
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let description = visitor.declarations.first { $0.name == "description" }
+        #expect(description != nil)
+        #expect(description?.exclusionReason == .protocolImplementation)
+        #expect(description?.parentType == "Person")
+    }
+
+    @Test
+    func testActorDeclaration() async throws {
+        let source = """
+        actor Counter {
+            var count: Int = 0
+
+            func increment() {
+                count += 1
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let actor = visitor.declarations.first { $0.name == "Counter" }
+        let count = visitor.declarations.first { $0.name == "count" }
+        let increment = visitor.declarations.first { $0.name == "increment" }
+
+        #expect(actor != nil)
+        #expect(actor?.type == .class)
+        #expect(count?.parentType == "Counter")
+        #expect(increment?.parentType == "Counter")
+    }
+
+    @Test
+    func testActorWithProtocolConformance() async throws {
+        let source = """
+        protocol Identifiable {
+            var id: String { get }
+        }
+
+        actor UserSession: Identifiable {
+            var id: String {
+                return "session-123"
+            }
+
+            var token: String = ""
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let id = visitor.declarations.first { $0.name == "id" }
+        let token = visitor.declarations.first { $0.name == "token" }
+
+        #expect(id?.exclusionReason == .protocolImplementation)
+        #expect(token?.exclusionReason == ExclusionReason.none)
+        #expect(visitor.typeProtocolConformance["UserSession"]?.contains("Identifiable") == true)
+    }
+
+    @Test
+    func testSubscriptDeclaration() async throws {
+        let source = """
+        struct Matrix {
+            var data: [[Int]] = []
+
+            subscript(row: Int, col: Int) -> Int {
+                return data[row][col]
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let subscriptDecl = visitor.declarations.first { $0.name == "subscript" }
+        #expect(subscriptDecl != nil)
+        #expect(subscriptDecl?.type == .function)
+        #expect(subscriptDecl?.parentType == "Matrix")
+    }
+
+    @Test
+    func testSubscriptImplementingProtocol() async throws {
+        let source = """
+        protocol Indexable {
+            subscript(index: Int) -> String { get }
+        }
+
+        struct StringList: Indexable {
+            var items: [String] = []
+
+            subscript(index: Int) -> String {
+                return items[index]
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let subscriptDecl = visitor.declarations.first { $0.name == "subscript" && $0.parentType == "StringList" }
+        #expect(subscriptDecl != nil)
+        #expect(subscriptDecl?.exclusionReason == .protocolImplementation)
+    }
+
+    @Test
+    func testInitializerDeclaration() async throws {
+        let source = """
+        struct Person {
+            let name: String
+            let age: Int
+
+            init(name: String, age: Int) {
+                self.name = name
+                self.age = age
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let initDecl = visitor.declarations.first { $0.name == "init" }
+        #expect(initDecl != nil)
+        #expect(initDecl?.type == .function)
+        #expect(initDecl?.parentType == "Person")
+    }
+
+    @Test
+    func testInitializerImplementingProtocol() async throws {
+        let source = """
+        protocol Constructible {
+            init(value: Int)
+        }
+
+        struct Number: Constructible {
+            let value: Int
+
+            init(value: Int) {
+                self.value = value
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let initDecl = visitor.declarations.first { $0.name == "init" }
+        #expect(initDecl != nil)
+        #expect(initDecl?.exclusionReason == .protocolImplementation)
+    }
+
+    @Test
+    func testDecodableInitializerMarkedAsProtocolImplementation() async throws {
+        let source = """
+        struct Config: Decodable {
+            let key: String
+            let value: Int
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                key = try container.decode(String.self, forKey: .key)
+                value = try container.decode(Int.self, forKey: .value)
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case key
+                case value
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let initDecl = visitor.declarations.first { $0.name == "init" }
+        #expect(initDecl != nil)
+        #expect(initDecl?.exclusionReason == .protocolImplementation)
+        #expect(visitor.typeProtocolConformance["Config"]?.contains("Decodable") == true)
+    }
+
+    @Test
+    func testOverrideSubscript() async throws {
+        let source = """
+        class BaseCollection {
+            subscript(index: Int) -> Int {
+                return index
+            }
+        }
+
+        class DerivedCollection: BaseCollection {
+            override subscript(index: Int) -> Int {
+                return index * 2
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let derivedSubscript = visitor.declarations.first { $0.name == "subscript" && $0.parentType == "DerivedCollection" }
+        #expect(derivedSubscript != nil)
+        #expect(derivedSubscript?.exclusionReason == .override)
+    }
+
+    @Test
+    func testOverrideInitializer() async throws {
+        let source = """
+        class Animal {
+            init() {}
+        }
+
+        class Dog: Animal {
+            override init() {
+                super.init()
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let dogInit = visitor.declarations.first { $0.name == "init" && $0.parentType == "Dog" }
+        #expect(dogInit != nil)
+        #expect(dogInit?.exclusionReason == .override)
+    }
+
+    @Test
+    func testObjcInitializer() async throws {
+        let source = """
+        class ViewController {
+            @objc init(nibName: String?) {
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let initDecl = visitor.declarations.first { $0.name == "init" }
+        #expect(initDecl != nil)
+        #expect(initDecl?.exclusionReason == .objcAttribute)
+    }
+
+    @Test
+    func testRegularVariableNotMarkedAsProtocolImplementation() async throws {
+        let source = """
+        struct Container {
+            var items: [String] = []
+            var count: Int {
+                return items.count
+            }
+            let capacity: Int = 100
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let items = visitor.declarations.first { $0.name == "items" }
+        let count = visitor.declarations.first { $0.name == "count" }
+        let capacity = visitor.declarations.first { $0.name == "capacity" }
+
+        #expect(items?.exclusionReason == ExclusionReason.none)
+        #expect(count?.exclusionReason == ExclusionReason.none)
+        #expect(capacity?.exclusionReason == ExclusionReason.none)
+    }
 }

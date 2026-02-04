@@ -292,4 +292,101 @@ struct ProtocolVisitorTests {
         #expect(visitor.protocolRequirements["DataProvider"]?.contains("count") == true)
         #expect(visitor.protocolRequirements["DataProvider"]?.contains("refresh") == true)
     }
+
+    @Test
+    func testProtocolWithSubscriptRequirement() async throws {
+        let source = """
+        protocol Indexable {
+            subscript(index: Int) -> String { get }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolRequirements["Indexable"]?.contains("subscript") == true)
+    }
+
+    @Test
+    func testProtocolWithInitializerRequirement() async throws {
+        let source = """
+        protocol Constructible {
+            init(value: Int)
+            init()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolRequirements["Constructible"]?.contains("init") == true)
+    }
+
+    @Test
+    func testProtocolWithAllRequirementTypes() async throws {
+        let source = """
+        protocol FullProtocol {
+            var property: String { get }
+            func method()
+            subscript(index: Int) -> Int { get }
+            init(value: String)
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("property") == true)
+        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("method") == true)
+        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("subscript") == true)
+        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("init") == true)
+    }
+
+    @Test
+    func testActorWithProtocolConformance() async throws {
+        let source = """
+        protocol Identifiable {
+            var id: String { get }
+        }
+
+        actor UserSession: Identifiable {
+            var id: String {
+                return "session-123"
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolRequirements["Identifiable"]?.contains("id") == true)
+    }
+
+    @Test
+    func testActorWithExternalProtocol() async throws {
+        let source = """
+        actor Counter: CustomStringConvertible {
+            var count: Int = 0
+
+            var description: String {
+                return "Counter: \\(count)"
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
+    }
 }

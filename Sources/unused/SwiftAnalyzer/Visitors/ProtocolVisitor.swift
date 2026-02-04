@@ -44,6 +44,12 @@ class ProtocolVisitor: SyntaxVisitor {
                     }
                 }
             }
+            if member.decl.is(SubscriptDeclSyntax.self) {
+                methods.insert("subscript")
+            }
+            if member.decl.is(InitializerDeclSyntax.self) {
+                methods.insert("init")
+            }
         }
 
         protocolRequirements[protocolName] = methods
@@ -66,6 +72,11 @@ class ProtocolVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        collectExternalProtocolConformances(inheritanceClause: node.inheritanceClause)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         collectExternalProtocolConformances(inheritanceClause: node.inheritanceClause)
         return .visitChildren
     }
