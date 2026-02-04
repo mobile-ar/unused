@@ -17,4 +17,26 @@ actor SwiftInterfaceClient: Sendable {
         return parser?.getProtocolRequirements(protocolName: protocolName, inModule: moduleName)
     }
 
+    /// Get all property wrapper type names from a module
+    /// - Parameter moduleName: The name of the module to query
+    /// - Returns: A set of property wrapper type names, or nil if the module is unavailable
+    func getPropertyWrappers(inModule moduleName: String) -> Set<String>? {
+        return parser?.getPropertyWrappers(inModule: moduleName)
+    }
+
+    /// Get all property wrappers from multiple modules
+    /// - Parameter moduleNames: The set of module names to query
+    /// - Returns: A combined set of all property wrapper type names found
+    func getAllPropertyWrappers(fromModules moduleNames: Set<String>) -> Set<String> {
+        var allPropertyWrappers = Set<String>()
+
+        for moduleName in moduleNames {
+            if let wrappers = parser?.getPropertyWrappers(inModule: moduleName) {
+                allPropertyWrappers.formUnion(wrappers)
+            }
+        }
+
+        return allPropertyWrappers
+    }
+
 }

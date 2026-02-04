@@ -10,24 +10,33 @@ struct LocalScope {
 
 class WriteOnlyVariableVisitor: SyntaxVisitor {
 
-    private let typeProperties: [String: [(name: String, line: Int, filePath: String)]]
+    private static let objcManagedAttributes: Set<String> = [
+        "IBOutlet",
+        "IBInspectable",
+        "NSManaged"
+    ]
+
+    private let typeProperties: [String: [PropertyInfo]]
     private let filePath: String
+    private let propertyWrappers: Set<String>
 
     private var scopeStack: [LocalScope] = []
     private var currentTypeName: String?
     private var typeContextStack: [String?] = []
 
-    private(set) var propertyReads: Set<PropertyUsageKey> = []
-    private(set) var propertyWrites: Set<PropertyUsageKey> = []
+    private(set) var propertyReads: Set<PropertyInfo> = []
+    private(set) var propertyWrites: Set<PropertyInfo> = []
 
     private var insideAssignmentLHS: Bool = false
 
     init(
         filePath: String,
-        typeProperties: [String: [(name: String, line: Int, filePath: String)]]
+        typeProperties: [String: [PropertyInfo]],
+        propertyWrappers: Set<String> = []
     ) {
         self.filePath = filePath
         self.typeProperties = typeProperties
+        self.propertyWrappers = propertyWrappers
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -53,33 +62,47 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
         return false
     }
 
-    private func propertyInfo(for name: String) -> (name: String, line: Int, filePath: String)? {
+    private func isFrameworkManagedProperty(_ propertyInfo: PropertyInfo) -> Bool {
+        guard let attributes = propertyInfo.attributes else {
+            return false
+        }
+        // Check for Objective-C managed attributes
+        if !attributes.isDisjoint(with: Self.objcManagedAttributes) {
+            return true
+        }
+        // Check for dynamically detected property wrappers
+        return !attributes.isDisjoint(with: propertyWrappers)
+    }
+
+    private func propertyInfo(for name: String) -> PropertyInfo? {
         guard let typeName = currentTypeName,
               let properties = typeProperties[typeName] else {
             return nil
         }
-        return properties.first { $0.name == name }
+        guard let property = properties.first(where: { $0.name == name }) else {
+            return nil
+        }
+        if isFrameworkManagedProperty(property) {
+            return nil
+        }
+        return property
     }
 
-    private func propertyInfoForAnyType(_ name: String) -> [(typeName: String, name: String, line: Int, filePath: String)] {
-        var results: [(typeName: String, name: String, line: Int, filePath: String)] = []
-        for (typeName, properties) in typeProperties {
+    private func propertyInfoForAnyType(_ name: String) -> [PropertyInfo] {
+        var results: [PropertyInfo] = []
+        for (_, properties) in typeProperties {
             if let prop = properties.first(where: { $0.name == name }) {
-                results.append((typeName: typeName, name: prop.name, line: prop.line, filePath: prop.filePath))
+                if !isFrameworkManagedProperty(prop) {
+                    results.append(prop)
+                }
             }
         }
         return results
     }
 
     private func recordExternalPropertyRead(name: String) {
-        for info in propertyInfoForAnyType(name) {
-            let key = PropertyUsageKey(
-                filePath: info.filePath,
-                typeName: info.typeName,
-                propertyName: name,
-                line: info.line
-            )
-            propertyReads.insert(key)
+        for propertyInfo in propertyInfoForAnyType(name) {
+            propertyReads.insert(propertyInfo)
         }
     }
 
@@ -88,22 +111,14 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
     }
 
     private func recordPropertyUsage(name: String, isWrite: Bool) {
-        guard let typeName = currentTypeName,
-              let info = propertyInfo(for: name) else {
+        guard let info = propertyInfo(for: name) else {
             return
         }
 
-        let key = PropertyUsageKey(
-            filePath: info.filePath,
-            typeName: typeName,
-            propertyName: name,
-            line: info.line
-        )
-
         if isWrite {
-            propertyWrites.insert(key)
+            propertyWrites.insert(info)
         } else {
-            propertyReads.insert(key)
+            propertyReads.insert(info)
         }
     }
 
@@ -229,7 +244,9 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
             if case .optionalBinding(let binding) = condition.condition {
                 if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                     let name = identifier.identifier.text
-                    if binding.initializer == nil && isPropertyOfCurrentType(name) {
+                    if let initializer = binding.initializer {
+                        walk(initializer)
+                    } else if isPropertyOfCurrentType(name) {
                         recordPropertyUsage(name: name, isWrite: false)
                     }
                     addLocalVariable(name)
@@ -244,7 +261,9 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
             if case .optionalBinding(let binding) = condition.condition {
                 if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                     let name = identifier.identifier.text
-                    if binding.initializer == nil && isPropertyOfCurrentType(name) {
+                    if let initializer = binding.initializer {
+                        walk(initializer)
+                    } else if isPropertyOfCurrentType(name) {
                         recordPropertyUsage(name: name, isWrite: false)
                     }
                     addLocalVariable(name)

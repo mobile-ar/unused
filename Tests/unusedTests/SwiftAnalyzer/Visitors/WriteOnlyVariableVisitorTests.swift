@@ -14,10 +14,26 @@ struct WriteOnlyVariableVisitorTests {
         filePath: String = "test.swift",
         typeProperties: [String: [(name: String, line: Int, filePath: String)]]
     ) -> WriteOnlyVariableVisitor {
+        var convertedProperties: [String: [PropertyInfo]] = [:]
+        for (typeName, properties) in typeProperties {
+            convertedProperties[typeName] = properties.map { prop in
+                PropertyInfo(name: prop.name, line: prop.line, filePath: prop.filePath, typeName: typeName, attributes: [])
+            }
+        }
+        return createVisitor(source: source, filePath: filePath, typePropertiesWithAttributes: convertedProperties)
+    }
+
+    private func createVisitor(
+        source: String,
+        filePath: String = "test.swift",
+        typePropertiesWithAttributes: [String: [PropertyInfo]],
+        propertyWrappers: Set<String> = []
+    ) -> WriteOnlyVariableVisitor {
         let sourceFile = Parser.parse(source: source)
         let visitor = WriteOnlyVariableVisitor(
             filePath: filePath,
-            typeProperties: typeProperties
+            typeProperties: typePropertiesWithAttributes,
+            propertyWrappers: propertyWrappers
         )
         visitor.walk(sourceFile)
         return visitor
@@ -42,7 +58,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyReads.isEmpty)
 
         let writeKey = visitor.propertyWrites.first
-        #expect(writeKey?.propertyName == "unused")
+        #expect(writeKey?.name == "unused")
         #expect(writeKey?.typeName == "Foo")
     }
 
@@ -69,7 +85,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyReads.count == 1)
 
         let readKey = visitor.propertyReads.first
-        #expect(readKey?.propertyName == "value")
+        #expect(readKey?.name == "value")
     }
 
     @Test
@@ -91,7 +107,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyReads.isEmpty)
 
         let writeKey = visitor.propertyWrites.first
-        #expect(writeKey?.propertyName == "name")
+        #expect(writeKey?.name == "name")
     }
 
     @Test
@@ -117,7 +133,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyReads.count == 1)
 
         let readKey = visitor.propertyReads.first
-        #expect(readKey?.propertyName == "value")
+        #expect(readKey?.name == "value")
     }
 
     @Test
@@ -196,7 +212,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyWrites.count == 2)
         #expect(visitor.propertyReads.count == 1)
 
-        let readNames = visitor.propertyReads.map(\.propertyName)
+        let readNames = visitor.propertyReads.map(\.name)
         #expect(readNames.contains("used"))
         #expect(!readNames.contains("unused"))
     }
@@ -599,6 +615,226 @@ struct WriteOnlyVariableVisitorTests {
     }
 
     @Test
+    func testPropertyFalsePositiveIsNotTriggered() {
+        let source = """
+        class SomeView: UIView {
+            private var date: Date?
+            func update() {
+                date = .new()
+            }
+
+            func printAndClean() {
+                if let date = date {
+                    print(date)
+                    self.date = nil
+                }
+            }
+        }
+        """
+
+        let typeProperties = ["SomeView": [(name: "date", line: 2, filePath: "test.swift")]]
+        let visitor = createVisitor(source: source, typeProperties: typeProperties)
+
+        #expect(!visitor.propertyWrites.isEmpty)
+        #expect(!visitor.propertyReads.isEmpty)
+        #expect(visitor.propertyWrites.first?.name == "date")
+        #expect(visitor.propertyReads.first?.name == "date")
+    }
+
+    @Test
+    func testIBOutletPropertyFalsePositive() {
+        let source = """
+        final class SomeCell: CollectionViewCell {
+            @IBOutlet weak var label: UILabel!
+            private let globalVar = "test"
+
+            init() {
+                label.text = "Test"
+                print(globalVar)
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "SomeCell": [
+                PropertyInfo(name: "label", line: 2, filePath: "test.swift", typeName: "SomeCell", attributes: ["IBOutlet"])
+            ]
+        ]
+        let visitor = createVisitor(source: source, typePropertiesWithAttributes: typeProperties)
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testPublishedPropertyExcluded() {
+        let source = """
+        class ViewModel {
+            @Published var count: Int
+
+            init() {
+                self.count = 0
+            }
+
+            func increment() {
+                count += 1
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "ViewModel": [
+                PropertyInfo(name: "count", line: 2, filePath: "test.swift", typeName: "ViewModel", attributes: ["Published"])
+            ]
+        ]
+        let visitor = createVisitor(
+            source: source,
+            typePropertiesWithAttributes: typeProperties,
+            propertyWrappers: ["Published"]
+        )
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testStatePropertyExcluded() {
+        let source = """
+        struct ContentView {
+            @State private var isPresented: Bool
+
+            init() {
+                self.isPresented = false
+            }
+
+            func toggle() {
+                isPresented.toggle()
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "ContentView": [
+                PropertyInfo(name: "isPresented", line: 2, filePath: "test.swift", typeName: "ContentView", attributes: ["State"])
+            ]
+        ]
+        let visitor = createVisitor(
+            source: source,
+            typePropertiesWithAttributes: typeProperties,
+            propertyWrappers: ["State"]
+        )
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testNSManagedPropertyExcluded() {
+        let source = """
+        class Person: NSManagedObject {
+            @NSManaged var name: String
+
+            func updateName() {
+                self.name = "New Name"
+                print(name)
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "Person": [
+                PropertyInfo(name: "name", line: 2, filePath: "test.swift", typeName: "Person", attributes: ["NSManaged"])
+            ]
+        ]
+        let visitor = createVisitor(source: source, typePropertiesWithAttributes: typeProperties)
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testBindingPropertyExcluded() {
+        let source = """
+        struct ChildView {
+            @Binding var value: String
+
+            func update() {
+                value = "updated"
+                print(value)
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "ChildView": [
+                PropertyInfo(name: "value", line: 2, filePath: "test.swift", typeName: "ChildView", attributes: ["Binding"])
+            ]
+        ]
+        let visitor = createVisitor(
+            source: source,
+            typePropertiesWithAttributes: typeProperties,
+            propertyWrappers: ["Binding"]
+        )
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testEnvironmentObjectPropertyExcluded() {
+        let source = """
+        struct SettingsView {
+            @EnvironmentObject var settings: AppSettings
+
+            func display() {
+                print(settings.theme)
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "SettingsView": [
+                PropertyInfo(name: "settings", line: 2, filePath: "test.swift", typeName: "SettingsView", attributes: ["EnvironmentObject"])
+            ]
+        ]
+        let visitor = createVisitor(
+            source: source,
+            typePropertiesWithAttributes: typeProperties,
+            propertyWrappers: ["EnvironmentObject"]
+        )
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
+    func testAppStoragePropertyExcluded() {
+        let source = """
+        struct PreferencesView {
+            @AppStorage("username") var username: String
+
+            func save() {
+                username = "newUser"
+            }
+        }
+        """
+
+        let typeProperties: [String: [PropertyInfo]] = [
+            "PreferencesView": [
+                PropertyInfo(name: "username", line: 2, filePath: "test.swift", typeName: "PreferencesView", attributes: ["AppStorage"])
+            ]
+        ]
+        let visitor = createVisitor(
+            source: source,
+            typePropertiesWithAttributes: typeProperties,
+            propertyWrappers: ["AppStorage"]
+        )
+
+        #expect(visitor.propertyWrites.isEmpty)
+        #expect(visitor.propertyReads.isEmpty)
+    }
+
+    @Test
     func testMultipleMethodsAccessingSameProperty() {
         let source = """
         class MultiAccess {
@@ -654,7 +890,7 @@ struct WriteOnlyVariableVisitorTests {
         #expect(visitor.propertyReads.count == 1)
 
         let readKey = visitor.propertyReads.first
-        #expect(readKey?.propertyName == "setting")
+        #expect(readKey?.name == "setting")
         #expect(readKey?.typeName == "Config")
     }
 
@@ -690,7 +926,7 @@ struct WriteOnlyVariableVisitorTests {
         ]
         let visitor = createVisitor(source: source, typeProperties: typeProperties)
 
-        let readNames = visitor.propertyReads.map(\.propertyName)
+        let readNames = visitor.propertyReads.map(\.name)
         #expect(readNames.contains("name"))
         #expect(readNames.contains("value"))
     }
@@ -719,7 +955,7 @@ struct WriteOnlyVariableVisitorTests {
         ]
         let visitor = createVisitor(source: source, typeProperties: typeProperties)
 
-        let dataReads = visitor.propertyReads.filter { $0.propertyName == "data" && $0.typeName == "Mutable" }
+        let dataReads = visitor.propertyReads.filter { $0.name == "data" && $0.typeName == "Mutable" }
         #expect(dataReads.isEmpty)
     }
 
@@ -753,7 +989,7 @@ struct WriteOnlyVariableVisitorTests {
         ]
         let visitor = createVisitor(source: source, typeProperties: typeProperties)
 
-        let readNames = visitor.propertyReads.map(\.propertyName)
+        let readNames = visitor.propertyReads.map(\.name)
         #expect(readNames.contains("file"))
         #expect(readNames.contains("line"))
     }
@@ -791,7 +1027,7 @@ struct WriteOnlyVariableVisitorTests {
         ]
         let visitor = createVisitor(source: source, typeProperties: typeProperties)
 
-        let readNames = visitor.propertyReads.map(\.propertyName)
+        let readNames = visitor.propertyReads.map(\.name)
         #expect(readNames.contains("inner"))
         #expect(readNames.contains("value"))
     }

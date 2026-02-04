@@ -9,7 +9,7 @@ class ProtocolVisitor: SyntaxVisitor {
     var protocolRequirements: [String: Set<String>] = [:]
     private var projectDefinedProtocols: Set<String> = []
     private var externalProtocolsToResolve: Set<String> = []
-    private var importedModules: Set<String> = []
+    private(set) var importedModules: Set<String> = []
     private let swiftInterfaceClient: SwiftInterfaceClient?
 
     /// Initialize the protocol visitor
@@ -98,7 +98,7 @@ class ProtocolVisitor: SyntaxVisitor {
     func resolveExternalProtocols() async {
         // Always include Swift standard library as a fallback
         let modulesToTry = importedModules.union(["Swift"])
-        
+
         let total = externalProtocolsToResolve.count
         for (index, protocolName) in externalProtocolsToResolve.enumerated() {
             // Skip if already resolved (e.g., by another file)

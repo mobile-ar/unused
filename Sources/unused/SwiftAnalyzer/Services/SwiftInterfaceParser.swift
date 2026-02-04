@@ -111,6 +111,52 @@ final class SwiftInterfaceParser: Sendable {
         return requirements
     }
 
+    /// Get all property wrapper type names from a module interface
+    /// - Parameter moduleName: The name of the module to query
+    /// - Returns: A set of property wrapper type names, or nil if the module is unavailable
+    func getPropertyWrappers(inModule moduleName: String) -> Set<String>? {
+        guard let interface = getModuleInterface(moduleName: moduleName) else {
+            return nil
+        }
+        return parsePropertyWrappers(from: interface)
+    }
+
+    /// Parse property wrapper type names from a module interface
+    /// - Parameter moduleInterface: The module interface text
+    /// - Returns: A set of property wrapper type names
+    func parsePropertyWrappers(from moduleInterface: String) -> Set<String> {
+        var propertyWrappers = Set<String>()
+
+        // Split into lines and find lines containing @propertyWrapper
+        // This handles cases where @propertyWrapper can appear anywhere in the attribute list:
+        // - @frozen @propertyWrapper public struct State<Value>
+        // - @propertyWrapper @frozen public struct Binding<Value>
+        // - @frozen @propertyWrapper @preconcurrency @_Concurrency.MainActor public struct StateObject<Value>
+        let lines = moduleInterface.components(separatedBy: .newlines)
+
+        for line in lines {
+            // Check if line contains @propertyWrapper
+            guard line.contains("@propertyWrapper") else {
+                continue
+            }
+
+            // Extract the type name using a pattern that matches struct/class/enum followed by identifier
+            let typePattern = #"(?:struct|class|enum)\s+(\w+)"#
+            guard let typeRegex = try? NSRegularExpression(pattern: typePattern) else {
+                continue
+            }
+
+            let range = NSRange(line.startIndex..., in: line)
+            if let match = typeRegex.firstMatch(in: line, range: range),
+               let nameRange = Range(match.range(at: 1), in: line) {
+                let typeName = String(line[nameRange])
+                propertyWrappers.insert(typeName)
+            }
+        }
+
+        return propertyWrappers
+    }
+
     /// Get protocol requirements directly by querying the module
     /// - Parameters:
     ///   - protocolName: The name of the protocol

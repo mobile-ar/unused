@@ -9,7 +9,8 @@ class DeclarationVisitor: SyntaxVisitor {
 
     var declarations: [Declaration] = []
     var typeProtocolConformance: [String: Set<String>] = [:]
-    var typePropertyDeclarations: [String: [(name: String, line: Int, filePath: String)]] = [:]
+    var typePropertyDeclarations: [String: [PropertyInfo]] = [:]
+    private(set) var projectPropertyWrappers: Set<String> = []
     let filePath: String
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
@@ -86,11 +87,15 @@ class DeclarationVisitor: SyntaxVisitor {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                 let name = identifier.identifier.text
                 var exclusionReason: ExclusionReason = .none
+                var attributes: Set<String> = []
 
-                // Check for @IBOutlet
+                // Collect all attributes
                 for attribute in node.attributes {
                     if case .attribute(let attr) = attribute {
                         let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                        if !attrName.isEmpty {
+                            attributes.insert(attrName)
+                        }
                         if attrName == "IBOutlet" {
                             exclusionReason = .ibOutlet
                         }
@@ -110,7 +115,14 @@ class DeclarationVisitor: SyntaxVisitor {
                 ))
 
                 if let typeName = currentTypeName {
-                    typePropertyDeclarations[typeName, default: []].append((name: name, line: lineNumber, filePath: filePath))
+                    let propertyInfo = PropertyInfo(
+                        name: name,
+                        line: lineNumber,
+                        filePath: filePath,
+                        typeName: typeName,
+                        attributes: attributes
+                    )
+                    typePropertyDeclarations[typeName, default: []].append(propertyInfo)
                 }
             }
         }
@@ -120,6 +132,11 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+
+        // Check if this class is a property wrapper
+        if hasPropertyWrapperAttribute(node.attributes) {
+            projectPropertyWrappers.insert(name)
+        }
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
@@ -143,6 +160,11 @@ class DeclarationVisitor: SyntaxVisitor {
         let name = node.name.text
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
+        // Check if this struct is a property wrapper
+        if hasPropertyWrapperAttribute(node.attributes) {
+            projectPropertyWrappers.insert(name)
+        }
+
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -164,6 +186,11 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.text
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+
+        // Check if this enum is a property wrapper
+        if hasPropertyWrapperAttribute(node.attributes) {
+            projectPropertyWrappers.insert(name)
+        }
 
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
@@ -246,6 +273,18 @@ class DeclarationVisitor: SyntaxVisitor {
         }
 
         return protocols
+    }
+
+    private func hasPropertyWrapperAttribute(_ attributes: AttributeListSyntax) -> Bool {
+        for attribute in attributes {
+            if case .attribute(let attr) = attribute {
+                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                if attrName == "propertyWrapper" {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
 }

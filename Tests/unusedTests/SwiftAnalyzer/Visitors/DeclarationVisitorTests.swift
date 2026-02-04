@@ -13,6 +13,155 @@ struct DeclarationVisitorTests {
     private let swiftInterfaceClient = SwiftInterfaceClient()
 
     @Test
+    func testProjectPropertyWrapperDetectionForStruct() async throws {
+        let source = """
+        @propertyWrapper
+        struct Clamped<Value: Comparable> {
+            var wrappedValue: Value
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        #expect(visitor.projectPropertyWrappers.contains("Clamped"))
+        #expect(visitor.projectPropertyWrappers.count == 1)
+    }
+
+    @Test
+    func testProjectPropertyWrapperDetectionForClass() async throws {
+        let source = """
+        @propertyWrapper
+        class Observable<Value> {
+            var wrappedValue: Value
+            init(wrappedValue: Value) {
+                self.wrappedValue = wrappedValue
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        #expect(visitor.projectPropertyWrappers.contains("Observable"))
+        #expect(visitor.projectPropertyWrappers.count == 1)
+    }
+
+    @Test
+    func testProjectPropertyWrapperDetectionForEnum() async throws {
+        let source = """
+        @propertyWrapper
+        enum OptionalValue<Value> {
+            case none
+            case some(Value)
+            
+            var wrappedValue: Value? {
+                switch self {
+                case .none: return nil
+                case .some(let value): return value
+                }
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        #expect(visitor.projectPropertyWrappers.contains("OptionalValue"))
+        #expect(visitor.projectPropertyWrappers.count == 1)
+    }
+
+    @Test
+    func testProjectPropertyWrapperDetectionMultipleWrappers() async throws {
+        let source = """
+        @propertyWrapper
+        struct Wrapper1<Value> {
+            var wrappedValue: Value
+        }
+        
+        struct NotAWrapper {
+            var value: Int
+        }
+        
+        @propertyWrapper
+        struct Wrapper2<Value> {
+            var wrappedValue: Value
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        #expect(visitor.projectPropertyWrappers.contains("Wrapper1"))
+        #expect(visitor.projectPropertyWrappers.contains("Wrapper2"))
+        #expect(!visitor.projectPropertyWrappers.contains("NotAWrapper"))
+        #expect(visitor.projectPropertyWrappers.count == 2)
+    }
+
+    @Test
+    func testProjectPropertyWrapperNotDetectedForRegularTypes() async throws {
+        let source = """
+        struct RegularStruct {
+            var value: Int
+        }
+        
+        class RegularClass {
+            var name: String = ""
+        }
+        
+        enum RegularEnum {
+            case one
+            case two
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        #expect(visitor.projectPropertyWrappers.isEmpty)
+    }
+
+    @Test
     func testExtensionWithExternalProtocolConformance() async throws {
         let source = """
         enum AppEnvironmentType: String {

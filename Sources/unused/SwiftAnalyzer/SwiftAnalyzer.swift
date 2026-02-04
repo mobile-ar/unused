@@ -11,8 +11,10 @@ class SwiftAnalyzer {
     private var usedIdentifiers = Set<String>()
     private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
     private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
-    private var typePropertyDeclarations: [String: [(name: String, line: Int, filePath: String)]] = [:] // type name -> property info
-    private var writeOnlyProperties: Set<PropertyUsageKey> = []
+    private var typePropertyDeclarations: [String: [PropertyInfo]] = [:] // type name -> property info
+    private var writeOnlyProperties: Set<PropertyInfo> = []
+    private var propertyWrappers: Set<String> = [] // dynamically detected property wrappers
+    private var projectPropertyWrappers: Set<String> = [] // property wrappers defined in the project
     private let options: AnalyzerOptions
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient?
@@ -34,8 +36,15 @@ class SwiftAnalyzer {
         }
         print("")
 
-        // Resolve external protocols via SourceKit
+        // Resolve external protocols via SwiftInterface
         await protocolVisitor.resolveExternalProtocols()
+
+        // Collect property wrappers from imported modules
+        // Include SwiftUICore because many SwiftUI property wrappers (State, Binding, etc.) are defined there
+        if let client = swiftInterfaceClient {
+            let modulesToQuery = protocolVisitor.importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
+            propertyWrappers = await client.getAllPropertyWrappers(fromModules: modulesToQuery)
+        }
 
         // Merge all protocol requirements
         for (protocolName, methods) in protocolVisitor.protocolRequirements {
@@ -60,8 +69,8 @@ class SwiftAnalyzer {
         print("")
 
         // Fourth pass: detect write-only variables
-        var allPropertyReads: Set<PropertyUsageKey> = []
-        var allPropertyWrites: Set<PropertyUsageKey> = []
+        var allPropertyReads: Set<PropertyInfo> = []
+        var allPropertyWrites: Set<PropertyInfo> = []
         for (index, parsed) in parsedFiles.enumerated() {
             printProgressBar(prefix: "Detecting write-only...", current: index + 1, total: parsedFiles.count)
             let (reads, writes) = collectWriteOnlyInfo(
@@ -120,6 +129,9 @@ class SwiftAnalyzer {
             typePropertyDeclarations[typeName, default: []].append(contentsOf: properties)
         }
 
+        // Collect project-defined property wrappers
+        projectPropertyWrappers.formUnion(visitor.projectPropertyWrappers)
+
         return (url: url, source: source, sourceFile: sourceFile)
     }
 
@@ -138,10 +150,14 @@ class SwiftAnalyzer {
         at url: URL,
         source: String,
         sourceFile: SourceFileSyntax
-    ) -> (reads: Set<PropertyUsageKey>, writes: Set<PropertyUsageKey>) {
+    ) -> (reads: Set<PropertyInfo>, writes: Set<PropertyInfo>) {
+        // Combine framework property wrappers with project-defined ones
+        let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
+
         let visitor = WriteOnlyVariableVisitor(
             filePath: url.path,
-            typeProperties: typePropertyDeclarations
+            typeProperties: typePropertyDeclarations,
+            propertyWrappers: allPropertyWrappers
         )
         visitor.walk(sourceFile)
         return (reads: visitor.propertyReads, writes: visitor.propertyWrites)
@@ -152,11 +168,11 @@ class SwiftAnalyzer {
               let parentType = declaration.parentType else {
             return false
         }
-        let key = PropertyUsageKey(
+        let key = PropertyInfo(
+            name: declaration.name,
+            line: declaration.line,
             filePath: declaration.file,
-            typeName: parentType,
-            propertyName: declaration.name,
-            line: declaration.line
+            typeName: parentType
         )
         return writeOnlyProperties.contains(key)
     }
