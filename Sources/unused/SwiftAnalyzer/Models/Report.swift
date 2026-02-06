@@ -5,7 +5,7 @@
 import Foundation
 
 /// Represents a declaration item with an assigned ID for reporting
-struct ReportItem: Codable, Equatable {
+struct ReportItem: Codable, Equatable, Hashable {
     let id: Int
     let name: String
     let type: DeclarationType

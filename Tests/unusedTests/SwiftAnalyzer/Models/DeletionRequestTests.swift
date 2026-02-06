@@ -166,4 +166,89 @@ struct DeletionRequestTests {
         #expect(request.linesToDelete == singleLine)
         #expect(request.linesToDelete?.count == 1)
     }
+
+    @Test func testPartialLineMode() {
+        let item = ReportItem(
+            id: 1,
+            name: "test",
+            type: .variable,
+            file: "/path/file.swift",
+            line: 5,
+            exclusionReason: .none,
+            parentType: nil
+        )
+        let partial = PartialLineDeletion(line: 5, startColumn: 10, endColumn: 25)
+
+        let request = DeletionRequest(item: item, mode: .partialLine(partial))
+
+        #expect(request.isPartialLineDeletion == true)
+        #expect(request.isFullDeclaration == false)
+        #expect(request.linesToDelete == nil)
+        #expect(request.partialLineDeletion == partial)
+    }
+
+    @Test func testRelatedCodeWithPartialDeletion() {
+        let parentItem = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: "/path/file.swift",
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+        let partial = PartialLineDeletion(line: 5, startColumn: 18, endColumn: 31)
+        let related = RelatedDeletion(
+            filePath: "/path/file.swift",
+            lineRange: 5...5,
+            sourceSnippet: "unused: Int",
+            description: "Init parameter 'unused' only used for this property",
+            parentDeclaration: parentItem,
+            partialDeletion: partial
+        )
+
+        let request = DeletionRequest.fromRelatedDeletion(related)
+
+        #expect(request.isPartialLineDeletion == true)
+        #expect(request.isRelatedCode == true)
+        #expect(request.partialLineDeletion == partial)
+        #expect(request.linesToDelete == nil)
+    }
+
+    @Test func testRelatedCodeWithoutPartialDeletion() {
+        let parentItem = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: "/path/file.swift",
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+        let related = RelatedDeletion(
+            filePath: "/path/file.swift",
+            lineRange: 5...6,
+            sourceSnippet: "unused: Int",
+            description: "Init parameter 'unused' only used for this property",
+            parentDeclaration: parentItem,
+            partialDeletion: nil
+        )
+
+        let request = DeletionRequest.fromRelatedDeletion(related)
+
+        #expect(request.isPartialLineDeletion == false)
+        #expect(request.isRelatedCode == true)
+        #expect(request.partialLineDeletion == nil)
+        #expect(request.linesToDelete == Set([5, 6]))
+    }
+
+    @Test func testPartialLineModeEquality() {
+        let partial1 = PartialLineDeletion(line: 5, startColumn: 10, endColumn: 20)
+        let partial2 = PartialLineDeletion(line: 5, startColumn: 10, endColumn: 20)
+        let partial3 = PartialLineDeletion(line: 5, startColumn: 10, endColumn: 25)
+
+        #expect(DeletionMode.partialLine(partial1) == DeletionMode.partialLine(partial2))
+        #expect(DeletionMode.partialLine(partial1) != DeletionMode.partialLine(partial3))
+        #expect(DeletionMode.partialLine(partial1) != DeletionMode.fullDeclaration)
+    }
 }

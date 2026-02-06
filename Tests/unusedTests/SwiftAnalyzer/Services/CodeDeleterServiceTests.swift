@@ -764,4 +764,164 @@ struct CodeDeleterServiceTests {
         #expect(preview.contains("func1"))
         #expect(preview.contains("func2"))
     }
+
+    @Test func testDeleteWithPartialLineRequest() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        struct User {
+            let name: String
+            let unused: Int
+
+            init(name: String, unused: Int) {
+                self.name = name
+                self.unused = unused
+            }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "User.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: filePath,
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+
+        // Delete ", unused: Int" from the init signature
+        // The init line has 4 spaces of indentation, so:
+        // "    init(name: String, unused: Int) {"
+        //  123456789012345678901234567890123456789
+        //           1         2         3
+        // Position 22 = ',' (after String), Position 35 = ')' (we want up to 't' of Int at 34)
+        let partial = PartialLineDeletion(line: 5, startColumn: 22, endColumn: 35)
+        let request = DeletionRequest(item: item, mode: .partialLine(partial))
+
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: [request], dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(modifiedContent.contains("init(name: String)"))
+        // The init parameter should be removed, but the property declaration remains
+        #expect(!modifiedContent.contains("init(name: String, unused: Int)"))
+    }
+
+    @Test func testDeleteWithMixedWholeAndPartialLineRequests() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        struct User {
+            let name: String
+            let unused: Int
+
+            init(name: String, unused: Int) {
+                self.name = name
+                self.unused = unused
+            }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "User.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: filePath,
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+
+        // Delete the whole line "self.unused = unused" and partial from init
+        // The init line has 4 spaces of indentation: "    init(name: String, unused: Int) {"
+        // Position 22 = ',', Position 35 = ')'
+        let partial = PartialLineDeletion(line: 5, startColumn: 22, endColumn: 35)
+        let relatedDeletion = RelatedDeletion(
+            filePath: filePath,
+            lineRange: 5...5,
+            sourceSnippet: "unused: Int",
+            description: "Init parameter 'unused'",
+            parentDeclaration: item,
+            partialDeletion: partial
+        )
+
+        let requests = [
+            DeletionRequest(item: item, mode: .specificLines([7])), // self.unused = unused
+            DeletionRequest.fromRelatedDeletion(relatedDeletion)
+        ]
+
+        let service = CodeDeleterService()
+        let result = await service.delete(requests: requests, dryRun: false)
+
+        #expect(result.totalDeleted == 2)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(modifiedContent.contains("init(name: String)"))
+        #expect(!modifiedContent.contains("self.unused"))
+    }
+
+    @Test func testPreviewWithPartialLineRequest() async throws {
+        let item = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: "/path/to/File.swift",
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+
+        let partial = PartialLineDeletion(line: 5, startColumn: 18, endColumn: 31)
+        let request = DeletionRequest(item: item, mode: .partialLine(partial))
+
+        let service = CodeDeleterService()
+        let preview = service.preview(requests: [request])
+
+        #expect(preview.contains("File: /path/to/File.swift"))
+        #expect(preview.contains("Line 5"))
+        #expect(preview.contains("columns 18-31"))
+        #expect(preview.contains("partial line"))
+    }
+
+    @Test func testPreviewWithRelatedCodePartialDeletion() async throws {
+        let parentItem = ReportItem(
+            id: 1,
+            name: "unused",
+            type: .variable,
+            file: "/path/to/File.swift",
+            line: 3,
+            exclusionReason: .writeOnly,
+            parentType: "User"
+        )
+
+        let partial = PartialLineDeletion(line: 5, startColumn: 18, endColumn: 31)
+        let related = RelatedDeletion(
+            filePath: "/path/to/File.swift",
+            lineRange: 5...5,
+            sourceSnippet: "unused: Int",
+            description: "Init parameter 'unused'",
+            parentDeclaration: parentItem,
+            partialDeletion: partial
+        )
+
+        let request = DeletionRequest.fromRelatedDeletion(related)
+
+        let service = CodeDeleterService()
+        let preview = service.preview(requests: [request])
+
+        #expect(preview.contains("Line 5"))
+        #expect(preview.contains("columns 18-31"))
+        #expect(preview.contains("partial line"))
+    }
 }

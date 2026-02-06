@@ -50,48 +50,99 @@ struct CodeDeleterService {
     ///   - dryRun: If true, only simulates deletion without modifying files
     /// - Returns: The result of the deletion operation
     func delete(requests: [DeletionRequest], dryRun: Bool = false) async -> DeletionResult {
-        let groupedRequests = Dictionary(grouping: requests, by: \.item.file)
+        let groupedRequests = groupRequestsByFile(requests)
         var fileResults: [FileDeletionResult] = []
         var totalDeleted = 0
         var successfulFiles = 0
 
         for (filePath, fileRequests) in groupedRequests {
-            let fullDeclarationRequests = fileRequests.filter { $0.isFullDeclaration }
-            let lineBasedRequests = fileRequests.filter { !$0.isFullDeclaration }
-
-            var fileDeletedCount = 0
-            var fileSuccess = true
+            var allLinesToDelete = Set<Int>()
+            var allPartialDeletions: [PartialLineDeletion] = []
             var fileError: Error?
+            var fullDeclarationCount = 0
+            var lineBasedLinesCount = 0
+            var partialDeletionCount = 0
 
-            // Handle full declaration deletions
-            if !fullDeclarationRequests.isEmpty {
-                let items = fullDeclarationRequests.map(\.item)
-                let result = await deleteFromFile(filePath: filePath, items: items, dryRun: dryRun)
-                if result.success {
-                    fileDeletedCount += result.deletedCount
-                } else {
-                    fileSuccess = false
-                    fileError = result.error
+            for request in fileRequests where request.isFullDeclaration {
+                do {
+                    if let extractedCode = try CodeExtractorVisitor.extractCode(for: request.item) {
+                        let lineRange = extractedCode.startLine...extractedCode.endLine
+                        allLinesToDelete.formUnion(lineRange)
+                        fullDeclarationCount += 1
+                    }
+                } catch {
+                    fileError = error
+                    break
                 }
             }
 
-            // Handle line-based deletions
-            if !lineBasedRequests.isEmpty && fileSuccess {
-                let result = lineDeleterService.deleteLines(from: filePath, requests: lineBasedRequests, dryRun: dryRun)
-                if result.success {
-                    fileDeletedCount += result.deletedLineCount
-                } else {
-                    fileSuccess = false
-                    fileError = result.error
+            if fileError == nil {
+                for request in fileRequests where !request.isFullDeclaration && !request.isPartialLineDeletion {
+                    if let lines = request.linesToDelete {
+                        allLinesToDelete.formUnion(lines)
+                        lineBasedLinesCount += lines.count
+                    }
                 }
             }
 
-            let result = FileDeletionResult(
-                filePath: filePath,
-                deletedCount: fileDeletedCount,
-                success: fileSuccess,
-                error: fileError
-            )
+            if fileError == nil {
+                for request in fileRequests where request.isPartialLineDeletion {
+                    if let partial = request.partialLineDeletion {
+                        allPartialDeletions.append(partial)
+                        partialDeletionCount += 1
+                    }
+                }
+            }
+
+            let result: FileDeletionResult
+            if let error = fileError {
+                result = FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: 0,
+                    success: false,
+                    error: error
+                )
+            } else if allLinesToDelete.isEmpty && allPartialDeletions.isEmpty {
+                result = FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: 0,
+                    success: true,
+                    error: nil
+                )
+            } else if allPartialDeletions.isEmpty {
+                let lineResult = lineDeleterService.deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun)
+                let deletedCount = lineResult.success ? (fullDeclarationCount + lineBasedLinesCount) : 0
+                result = FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: deletedCount,
+                    success: lineResult.success,
+                    error: lineResult.error
+                )
+            } else if allLinesToDelete.isEmpty {
+                let lineResult = lineDeleterService.deletePartialLines(from: filePath, partialDeletions: allPartialDeletions, dryRun: dryRun)
+                let deletedCount = lineResult.success ? partialDeletionCount : 0
+                result = FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: deletedCount,
+                    success: lineResult.success,
+                    error: lineResult.error
+                )
+            } else {
+                let lineResult = lineDeleterService.deleteMixed(
+                    from: filePath,
+                    wholeLineNumbers: allLinesToDelete,
+                    partialDeletions: allPartialDeletions,
+                    dryRun: dryRun
+                )
+                let deletedCount = lineResult.success ? (fullDeclarationCount + lineBasedLinesCount + partialDeletionCount) : 0
+                result = FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: deletedCount,
+                    success: lineResult.success,
+                    error: lineResult.error
+                )
+            }
+
             fileResults.append(result)
 
             if result.success {
@@ -108,70 +159,21 @@ struct CodeDeleterService {
         )
     }
 
-    private func deleteFromFile(filePath: String, items: [ReportItem], dryRun: Bool) async -> FileDeletionResult {
-        do {
-            let source = try String(contentsOfFile: filePath, encoding: .utf8)
-            let sourceFile = Parser.parse(source: source)
+    private func groupRequestsByFile(_ requests: [DeletionRequest]) -> [String: [DeletionRequest]] {
+        var grouped: [String: [DeletionRequest]] = [:]
 
-            let targets = items.map { DeletionTarget(from: $0) }
-            let visitor = DeletionVisitor(targets: targets, sourceFile: sourceFile, fileName: filePath)
-            let modifiedSource = visitor.rewrite(sourceFile)
-
-            let deletedCount = visitor.deletedCount
-
-            if !dryRun && deletedCount > 0 {
-                let cleanedSource = cleanupExtraBlankLines(modifiedSource.description)
-                try cleanedSource.write(toFile: filePath, atomically: true, encoding: .utf8)
-            }
-
-            return FileDeletionResult(
-                filePath: filePath,
-                deletedCount: deletedCount,
-                success: true,
-                error: nil
-            )
-        } catch {
-            return FileDeletionResult(
-                filePath: filePath,
-                deletedCount: 0,
-                success: false,
-                error: error
-            )
-        }
-    }
-
-    // TODO: Review if this works fine, looks like it might delete some top comments or extra empty lines (maybe check to use swift format if available?)
-    /// Removes excessive blank lines that may result from deletion
-    private func cleanupExtraBlankLines(_ source: String) -> String {
-        let lines = source.components(separatedBy: "\n")
-        var result: [String] = []
-        var blankLineCount = 0
-
-        for line in lines {
-            let isBlank = line.trimmingCharacters(in: .whitespaces).isEmpty
-
-            if isBlank {
-                blankLineCount += 1
-                if blankLineCount <= 2 {
-                    result.append(line)
-                }
+        for request in requests {
+            let filePath: String
+            if case .relatedCode(let related) = request.mode {
+                filePath = related.filePath
             } else {
-                blankLineCount = 0
-                result.append(line)
+                filePath = request.item.file
             }
+
+            grouped[filePath, default: []].append(request)
         }
 
-        // Remove trailing blank lines but keep one newline at end
-        while result.count > 1 && result.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
-            result.removeLast()
-        }
-
-        var finalResult = result.joined(separator: "\n")
-        if !finalResult.hasSuffix("\n") {
-            finalResult += "\n"
-        }
-
-        return finalResult
+        return grouped
     }
 
     /// Previews what would be deleted without making changes
@@ -186,12 +188,12 @@ struct CodeDeleterService {
     /// - Parameter requests: The deletion requests to preview
     /// - Returns: A formatted string describing what would be deleted
     func preview(requests: [DeletionRequest]) -> String {
-        let groupedRequests = Dictionary(grouping: requests, by: \.item.file)
+        let groupedRequests = groupRequestsByFile(requests)
         var lines: [String] = []
 
         for (filePath, fileRequests) in groupedRequests.sorted(by: { $0.key < $1.key }) {
             lines.append("File: \(filePath)")
-            for request in fileRequests.sorted(by: { $0.item.line < $1.item.line }) {
+            for request in fileRequests.sorted(by: { sortLine(for: $0) < sortLine(for: $1) }) {
                 let item = request.item
                 switch request.mode {
                 case .fullDeclaration:
@@ -199,11 +201,36 @@ struct CodeDeleterService {
                 case .specificLines(let lineNumbers):
                     let sortedLines = lineNumbers.sorted().map(String.init).joined(separator: ", ")
                     lines.append("  Lines \(sortedLines): \(item.type.rawValue) '\(item.name)' (specific lines)")
+                case .lineRange(let range):
+                    lines.append("  Lines \(range.lowerBound)-\(range.upperBound): \(item.type.rawValue) '\(item.name)' (line range)")
+                case .relatedCode(let related):
+                    if let partial = related.partialDeletion {
+                        lines.append("  Line \(partial.line), columns \(partial.startColumn)-\(partial.endColumn): \(related.description) (partial line)")
+                    } else {
+                        lines.append("  Lines \(related.lineRange.lowerBound)-\(related.lineRange.upperBound): \(related.description) (related code)")
+                    }
+                case .partialLine(let partial):
+                    lines.append("  Line \(partial.line), columns \(partial.startColumn)-\(partial.endColumn): \(item.type.rawValue) '\(item.name)' (partial line)")
                 }
             }
             lines.append("")
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private func sortLine(for request: DeletionRequest) -> Int {
+        switch request.mode {
+        case .fullDeclaration:
+            return request.item.line
+        case .specificLines(let lines):
+            return lines.min() ?? request.item.line
+        case .lineRange(let range):
+            return range.lowerBound
+        case .relatedCode(let related):
+            return related.lineRange.lowerBound
+        case .partialLine(let partial):
+            return partial.line
+        }
     }
 }

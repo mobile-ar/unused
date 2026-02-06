@@ -171,7 +171,7 @@ struct Filter: AsyncParsableCommand {
 
         if interactive {
             let interactiveService = InteractiveDeleteService()
-            requestsToDelete = try interactiveService.confirmDeletions(items: items)
+            requestsToDelete = try await interactiveService.confirmDeletions(items: items)
 
             if requestsToDelete.isEmpty {
                 print("\nNo declarations selected for deletion.".yellow)

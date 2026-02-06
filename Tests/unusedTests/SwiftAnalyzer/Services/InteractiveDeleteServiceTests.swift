@@ -176,7 +176,7 @@ struct InteractiveDeleteServiceTests {
         #expect(lineRange1 != lineRange3)
     }
 
-    @Test func testConfirmDeletionsReturnsFullDeclarationForYes() throws {
+    @Test func testConfirmDeletionsReturnsFullDeclarationForYes() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -202,7 +202,7 @@ struct InteractiveDeleteServiceTests {
         let mockInput = MockInputProvider(responses: ["y"])
         let service = InteractiveDeleteService(inputProvider: mockInput)
 
-        let requests = try service.confirmDeletions(items: [item])
+        let requests = try await service.confirmDeletions(items: [item])
 
         #expect(requests.count == 1)
         #expect(requests[0].item == item)
@@ -210,7 +210,7 @@ struct InteractiveDeleteServiceTests {
         #expect(requests[0].isFullDeclaration == true)
     }
 
-    @Test func testConfirmDeletionsReturnsSpecificLinesForLineRange() throws {
+    @Test func testConfirmDeletionsReturnsSpecificLinesForLineRange() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -238,7 +238,7 @@ struct InteractiveDeleteServiceTests {
         let mockInput = MockInputProvider(responses: ["2-3"])
         let service = InteractiveDeleteService(inputProvider: mockInput)
 
-        let requests = try service.confirmDeletions(items: [item])
+        let requests = try await service.confirmDeletions(items: [item])
 
         #expect(requests.count == 1)
         #expect(requests[0].item == item)
@@ -250,7 +250,7 @@ struct InteractiveDeleteServiceTests {
         }
     }
 
-    @Test func testConfirmDeletionsReturnsFullDeclarationForAll() throws {
+    @Test func testConfirmDeletionsReturnsFullDeclarationForAll() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -272,13 +272,14 @@ struct InteractiveDeleteServiceTests {
         let mockInput = MockInputProvider(responses: ["a"])
         let service = InteractiveDeleteService(inputProvider: mockInput)
 
-        let requests = try service.confirmDeletions(items: items)
+        let requests = try await service.confirmDeletions(items: items)
 
-        #expect(requests.count == 3)
-        #expect(requests.allSatisfy { $0.isFullDeclaration })
+        #expect(requests.count >= 3)
+        let fullDeclarationCount = requests.filter { $0.isFullDeclaration }.count
+        #expect(fullDeclarationCount == 3)
     }
 
-    @Test func testConfirmDeletionsReturnsEmptyForQuit() throws {
+    @Test func testConfirmDeletionsReturnsEmptyForQuit() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -300,12 +301,12 @@ struct InteractiveDeleteServiceTests {
         let mockInput = MockInputProvider(responses: ["q"])
         let service = InteractiveDeleteService(inputProvider: mockInput)
 
-        let requests = try service.confirmDeletions(items: [item])
+        let requests = try await service.confirmDeletions(items: [item])
 
         #expect(requests.isEmpty)
     }
 
-    @Test func testConfirmDeletionsMixedResponses() throws {
+    @Test func testConfirmDeletionsMixedResponses() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -334,7 +335,7 @@ struct InteractiveDeleteServiceTests {
         let mockInput = MockInputProvider(responses: ["y", "5", "n"])
         let service = InteractiveDeleteService(inputProvider: mockInput)
 
-        let requests = try service.confirmDeletions(items: items)
+        let requests = try await service.confirmDeletions(items: items)
 
         #expect(requests.count == 2)
         #expect(requests[0].isFullDeclaration == true)
