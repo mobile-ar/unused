@@ -33,28 +33,20 @@ struct DeletionRequest: Equatable, Hashable {
         case .lineRange(let range):
             return Set(range)
         case .relatedCode(let related):
-            if related.isPartialLineDeletion {
-                return nil
-            }
+            if related.isPartialLineDeletion { return nil }
             return Set(related.lineRange)
-        case .fullDeclaration:
-            return nil
-        case .partialLine:
+        case .fullDeclaration, .partialLine:
             return nil
         }
     }
 
     var isFullDeclaration: Bool {
-        if case .fullDeclaration = mode {
-            return true
-        }
+        if case .fullDeclaration = mode { return true }
         return false
     }
 
     var isRelatedCode: Bool {
-        if case .relatedCode = mode {
-            return true
-        }
+        if case .relatedCode = mode { return true }
         return false
     }
 
@@ -70,9 +62,7 @@ struct DeletionRequest: Equatable, Hashable {
     }
 
     var relatedDeletion: RelatedDeletion? {
-        if case .relatedCode(let related) = mode {
-            return related
-        }
+        if case .relatedCode(let related) = mode { return related }
         return nil
     }
 

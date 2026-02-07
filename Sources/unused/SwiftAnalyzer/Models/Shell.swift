@@ -5,7 +5,5 @@
 import ArgumentParser
 
 enum Shell: String, ExpressibleByArgument {
-
     case bash, zsh, fish
-
 }

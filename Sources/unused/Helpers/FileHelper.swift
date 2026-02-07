@@ -26,20 +26,12 @@ func getSwiftFiles(in directory: URL, includeTests: Bool = false) async -> [URL]
 func isTestFile(_ url: URL) -> Bool {
     let fileName = url.lastPathComponent
 
-    // Check if file is in Tests directory
-    if url.pathComponents.contains("Tests") {
-        return true
-    }
+    if url.pathComponents.contains("Tests") { return true }
 
-    // Check if filename contains "Test" or "Tests"
-    if fileName.contains("Test") || fileName.contains("Tests") {
-        return true
-    }
+    if fileName.contains("Test") || fileName.contains("Tests") { return true }
 
     // Parse file with swift-syntax to check for test framework imports
-    guard let source = try? String(contentsOf: url, encoding: .utf8) else {
-        return false
-    }
+    guard let source = try? String(contentsOf: url, encoding: .utf8) else { return false }
 
     let sourceFile = Parser.parse(source: source)
 

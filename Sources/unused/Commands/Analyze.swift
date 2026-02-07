@@ -82,9 +82,7 @@ struct Analyze: AsyncParsableCommand {
 
     private func displayExistingResults() throws {
         let report = try ReportService.read(from: directory)
-
         ReportService.display(report: report)
-
         print("\nDisplaying results from existing .unused.json file.".green.bold)
         print("Run analysis again to update results.".overlay0)
     }

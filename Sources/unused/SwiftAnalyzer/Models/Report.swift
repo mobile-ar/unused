@@ -123,21 +123,13 @@ struct Report: Codable, Equatable {
     /// Current schema version
     static let currentVersion = "1.0"
 
-    init(
-        unused: [ReportItem],
-        excluded: ExcludedItems,
-        options: ReportOptions,
-        testFilesExcluded: Int
-    ) {
+    init(unused: [ReportItem], excluded: ExcludedItems, options: ReportOptions, testFilesExcluded: Int) {
         self.version = Self.currentVersion
         self.generatedAt = Date()
         self.options = options
         self.unused = unused
         self.excluded = excluded
-        self.summary = ReportSummary(
-            totalExcluded: excluded.totalCount,
-            testFilesExcluded: testFilesExcluded
-        )
+        self.summary = ReportSummary(totalExcluded: excluded.totalCount, testFilesExcluded: testFilesExcluded)
     }
 
     /// Returns all items (unused + excluded) for ID lookup

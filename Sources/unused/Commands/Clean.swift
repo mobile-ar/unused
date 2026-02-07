@@ -14,9 +14,6 @@ struct Clean: ParsableCommand {
     @Argument(help: "The directory to clean .unused.json files from (defaults to current directory)")
     var directory: String = FileManager.default.currentDirectoryPath
 
-    @Flag(name: .long, help: "Perform a dry run without deleting files")
-    var dryRun: Bool = false
-
     func run() throws {
         print("Unused v\(Unused.configuration.version)".blue.bold)
         print("Cleaning .unused.json files...")
@@ -37,14 +34,6 @@ struct Clean: ParsableCommand {
         }
 
         print("Found \(unusedFiles.count) .unused.json file(s)".teal)
-
-        if dryRun {
-            print("\nDry run - files that would be deleted:".yellow.bold)
-            for file in unusedFiles {
-                print("  - \(file.path)".yellow)
-            }
-            return
-        }
 
         var deletedCount = 0
         var failedCount = 0
@@ -70,10 +59,7 @@ struct Clean: ParsableCommand {
     private func getUnusedFiles(in directory: URL) -> [URL] {
         var unusedFiles = [URL]()
         let fileManager = FileManager.default
-        let enumerator = fileManager.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        )
+        let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey])
 
         while let element = enumerator?.nextObject() as? URL {
             if !element.pathComponents.contains(".build") && element.lastPathComponent == ReportService.reportFileName {
