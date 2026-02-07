@@ -81,24 +81,28 @@ struct ReportOptions: Codable, Equatable {
     let includeProtocols: Bool
     let includeObjc: Bool
     let includeTests: Bool
+    let showExcluded: Bool
 
     init(from options: AnalyzerOptions) {
         self.includeOverrides = options.includeOverrides
         self.includeProtocols = options.includeProtocols
         self.includeObjc = options.includeObjc
         self.includeTests = options.includeTests
+        self.showExcluded = options.showExcluded
     }
 
     init(
         includeOverrides: Bool = false,
         includeProtocols: Bool = false,
         includeObjc: Bool = false,
-        includeTests: Bool = false
+        includeTests: Bool = false,
+        showExcluded: Bool = false
     ) {
         self.includeOverrides = includeOverrides
         self.includeProtocols = includeProtocols
         self.includeObjc = includeObjc
         self.includeTests = includeTests
+        self.showExcluded = showExcluded
     }
 }
 

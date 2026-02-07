@@ -4,17 +4,11 @@
 
 import Foundation
 
-/// Service for reading and writing analysis reports in JSON format
+/// Service for reading and writing analysis reports in JSON format. And for displaying the report to console.
 struct ReportService {
 
-    /// The filename used for storing the analysis report
     static let reportFileName = ".unused.json"
 
-    /// Writes an analysis report to the specified directory as JSON
-    /// - Parameters:
-    ///   - report: The analysis report to write
-    ///   - directory: The directory path where the report file will be created
-    /// - Throws: An error if the file cannot be written
     static func write(report: Report, to directory: String) throws {
         let directoryURL = URL(fileURLWithPath: directory)
         let outputURL = directoryURL.appendingPathComponent(reportFileName)
@@ -27,10 +21,6 @@ struct ReportService {
         try jsonData.write(to: outputURL)
     }
 
-    /// Reads an analysis report from the specified directory
-    /// - Parameter directory: The directory path containing the report file
-    /// - Returns: The decoded analysis report
-    /// - Throws: An error if the file cannot be read or decoded
     static func read(from directory: String) throws -> Report {
         let directoryURL = URL(fileURLWithPath: directory)
         let inputURL = directoryURL.appendingPathComponent(reportFileName)
@@ -43,13 +33,134 @@ struct ReportService {
         return try decoder.decode(Report.self, from: jsonData)
     }
 
-    /// Checks if a report file exists in the specified directory
-    /// - Parameter directory: The directory path to check
-    /// - Returns: `true` if the report file exists, `false` otherwise
     static func reportExists(in directory: String) -> Bool {
         let directoryURL = URL(fileURLWithPath: directory)
         let reportURL = directoryURL.appendingPathComponent(reportFileName)
         return FileManager.default.fileExists(atPath: reportURL.path)
+    }
+
+    static func display(report: Report) {
+        let unusedItems = report.unused
+        let excludedOverrideItems = report.excluded.overrides
+        let excludedProtocolItems = report.excluded.protocolImplementations
+        let excludedObjcItems = report.excluded.objcItems
+        let testFileCount = report.summary.testFilesExcluded
+        let options = report.options
+
+        let totalItems = unusedItems.count + excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count
+        let idWidth = max(1, String(totalItems).count)
+
+        let unusedFunctionItems = unusedItems.filter { $0.type == .function }
+        let unusedVariableItems = unusedItems.filter { $0.type == .variable && $0.exclusionReason != .writeOnly }
+        let writeOnlyItems = unusedItems.filter { $0.exclusionReason == .writeOnly }
+        let unusedClassItems = unusedItems.filter { $0.type == .class }
+
+        if !unusedFunctionItems.isEmpty {
+            print("\nUnused Functions:".peach.bold)
+            for item in unusedFunctionItems {
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+            }
+        }
+
+        if !unusedVariableItems.isEmpty {
+            print("\nUnused Variables:".mauve.bold)
+            for item in unusedVariableItems {
+                let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+            }
+        }
+
+        if !unusedClassItems.isEmpty {
+            print("\nUnused Classes:".pink.bold)
+            for item in unusedClassItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !writeOnlyItems.isEmpty {
+            print("\nWrite-Only Variables (assigned but never read):".lavender.bold)
+            for item in writeOnlyItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0)
+            }
+        }
+
+        let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count
+
+        if totalExcluded > 0 || testFileCount > 0 {
+            print("\nExcluded from results:".teal.bold)
+            if !excludedOverrideItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedOverrideItems.count)".yellow + " override(s)".subtext0)
+            }
+            if !excludedProtocolItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedProtocolItems.count)".yellow + " protocol implementation(s)".subtext0)
+            }
+            if !excludedObjcItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            }
+            if testFileCount > 0 {
+                print("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
+            }
+
+            if options.showExcluded {
+                if !excludedOverrideItems.isEmpty {
+                    print("\n  Overrides:".peach)
+                    for item in excludedOverrideItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    }
+                }
+
+                if !excludedProtocolItems.isEmpty {
+                    print("\n  Protocol Implementations:".mauve)
+                    for item in excludedProtocolItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    }
+                }
+
+                if !excludedObjcItems.isEmpty {
+                    print("\n  @objc/@IBAction/@IBOutlet:".pink)
+                    for item in excludedObjcItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    }
+                }
+            }
+
+            var flags: [String] = []
+            if !options.includeOverrides && !excludedOverrideItems.isEmpty {
+                flags.append("--include-overrides")
+            }
+            if !options.includeProtocols && !excludedProtocolItems.isEmpty {
+                flags.append("--include-protocols")
+            }
+            if !options.includeObjc && !excludedObjcItems.isEmpty {
+                flags.append("--include-objc")
+            }
+            if !options.includeTests && testFileCount > 0 {
+                flags.append("--include-tests")
+            }
+
+            if !flags.isEmpty {
+                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".overlay0)
+            }
+            if !options.showExcluded {
+                print("Use --show-excluded to see the list of excluded items.".overlay0)
+            }
+        }
+
+        if unusedItems.isEmpty {
+            if totalExcluded > 0 {
+                print("\nNo unused code found (excluding \(totalExcluded) override/protocol/framework items)!".green.bold)
+            } else {
+                print("\nNo unused code found!".green.bold)
+            }
+        }
     }
 
 }
