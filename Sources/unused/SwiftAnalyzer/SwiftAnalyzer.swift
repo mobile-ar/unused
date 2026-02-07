@@ -143,11 +143,7 @@ class SwiftAnalyzer {
         usedIdentifiers.formUnion(visitor.usedIdentifiers)
     }
 
-    private func collectWriteOnlyInfo(
-        at url: URL,
-        source: String,
-        sourceFile: SourceFileSyntax
-    ) -> (reads: Set<PropertyInfo>, writes: Set<PropertyInfo>) {
+    private func collectWriteOnlyInfo(at url: URL, source: String, sourceFile: SourceFileSyntax) -> (reads: Set<PropertyInfo>, writes: Set<PropertyInfo>) {
         // Combine framework property wrappers with project-defined ones
         let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
 

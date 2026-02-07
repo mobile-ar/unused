@@ -6,21 +6,11 @@ import Foundation
 
 struct LineDeletionResult {
     let filePath: String
-    let deletedLineCount: Int
-    let deletedPartialCount: Int
     let success: Bool
     let error: Error?
 
-    init(
-        filePath: String,
-        deletedLineCount: Int,
-        deletedPartialCount: Int = 0,
-        success: Bool,
-        error: Error?
-    ) {
+    init(filePath: String, success: Bool, error: Error?) {
         self.filePath = filePath
-        self.deletedLineCount = deletedLineCount
-        self.deletedPartialCount = deletedPartialCount
         self.success = success
         self.error = error
     }
@@ -50,19 +40,9 @@ struct LineDeleterService {
                 try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
             }
 
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: deletedCount,
-                success: true,
-                error: nil
-            )
+            return LineDeletionResult(filePath: filePath, success: true, error: nil)
         } catch {
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: 0,
-                success: false,
-                error: error
-            )
+            return LineDeletionResult(filePath: filePath, success: false, error: error)
         }
     }
 
@@ -74,33 +54,18 @@ struct LineDeleterService {
         }
 
         guard !allLinesToDelete.isEmpty else {
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: 0,
-                success: true,
-                error: nil
-            )
+            return LineDeletionResult(filePath: filePath, success: true, error: nil)
         }
 
         return deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun)
     }
 
-    func deletePartialLine(
-        from filePath: String,
-        line: Int,
-        startColumn: Int,
-        endColumn: Int,
-        dryRun: Bool = false
-    ) -> LineDeletionResult {
+    func deletePartialLine(from filePath: String, line: Int, startColumn: Int, endColumn: Int, dryRun: Bool = false) -> LineDeletionResult {
         let partial = PartialLineDeletion(line: line, startColumn: startColumn, endColumn: endColumn)
         return deletePartialLines(from: filePath, partialDeletions: [partial], dryRun: dryRun)
     }
 
-    func deletePartialLines(
-        from filePath: String,
-        partialDeletions: [PartialLineDeletion],
-        dryRun: Bool = false
-    ) -> LineDeletionResult {
+    func deletePartialLines(from filePath: String, partialDeletions: [PartialLineDeletion], dryRun: Bool = false) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)
             var lines = source.components(separatedBy: "\n")
@@ -128,30 +93,13 @@ struct LineDeleterService {
                 try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
             }
 
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: 0,
-                deletedPartialCount: deletedPartialCount,
-                success: true,
-                error: nil
-            )
+            return LineDeletionResult(filePath: filePath, success: true, error: nil)
         } catch {
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: 0,
-                deletedPartialCount: 0,
-                success: false,
-                error: error
-            )
+            return LineDeletionResult(filePath: filePath, success: false, error: error)
         }
     }
 
-    func deleteMixed(
-        from filePath: String,
-        wholeLineNumbers: Set<Int>,
-        partialDeletions: [PartialLineDeletion],
-        dryRun: Bool = false
-    ) -> LineDeletionResult {
+    func deleteMixed(from filePath: String, wholeLineNumbers: Set<Int>, partialDeletions: [PartialLineDeletion], dryRun: Bool = false) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)
             var lines = source.components(separatedBy: "\n")
@@ -197,21 +145,9 @@ struct LineDeleterService {
                 try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
             }
 
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: deletedLineCount,
-                deletedPartialCount: deletedPartialCount,
-                success: true,
-                error: nil
-            )
+            return LineDeletionResult(filePath: filePath, success: true, error: nil)
         } catch {
-            return LineDeletionResult(
-                filePath: filePath,
-                deletedLineCount: 0,
-                deletedPartialCount: 0,
-                success: false,
-                error: error
-            )
+            return LineDeletionResult(filePath: filePath, success: false, error: error)
         }
     }
 

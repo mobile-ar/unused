@@ -22,7 +22,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [2], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 3\nline 4")
@@ -41,7 +40,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [2, 4], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 2)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 3\nline 5")
@@ -60,7 +58,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [2, 3, 4], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 3)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 5")
@@ -82,7 +79,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [5, 6, 7], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 3)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("func hello()"))
@@ -103,7 +99,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [2], dryRun: true)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == originalContent)
@@ -120,7 +115,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [10, 20, 30], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 0)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 2\nline 3")
@@ -135,7 +129,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [1, 2], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1) // The empty string counts as one line
     }
 
     @Test func testDeleteAllLines() throws {
@@ -149,7 +142,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [1, 2, 3], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 3)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "")
@@ -166,7 +158,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [1], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 2\nline 3")
@@ -183,7 +174,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [3], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 2")
@@ -193,7 +183,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: "/nonexistent/path/file.swift", lineNumbers: [1], dryRun: false)
 
         #expect(result.success == false)
-        #expect(result.deletedLineCount == 0)
         #expect(result.error != nil)
     }
 
@@ -209,7 +198,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, lineNumbers: [], dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 0)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == originalContent)
@@ -252,7 +240,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, requests: requests, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 3)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 3")
@@ -283,7 +270,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, requests: requests, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 0)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == "line 1\nline 2\nline 3")
@@ -299,7 +285,6 @@ struct LineDeleterServiceTests {
         let result = service.deleteLines(from: tempFile, requests: requests, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 0)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == originalContent)
