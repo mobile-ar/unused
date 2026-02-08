@@ -109,20 +109,22 @@ struct InstallCompletionsHelper {
         return .standard
     }
 
-    func install(shell: Shell, force: Bool) throws {
+    func install(shell: Shell) throws {
         let homeDir = fileManager.homeDirectoryForCurrentUser.path
 
         switch shell {
         case .bash:
-            try installBashCompletions(homeDir: homeDir, force: force)
+            try installBashCompletions(homeDir: homeDir)
         case .zsh:
-            try installZshCompletions(homeDir: homeDir, force: force)
+            try installZshCompletions(homeDir: homeDir)
         case .fish:
-            try installFishCompletions(homeDir: homeDir, force: force)
+            try installFishCompletions(homeDir: homeDir)
         }
     }
 
-    private func installBashCompletions(homeDir: String, force: Bool) throws {
+    private func installBashCompletions(homeDir: String) throws {
+        cleanupExistingBashCompletions(homeDir: homeDir)
+
         let rcFile = "\(homeDir)/.bashrc"
         let completionLine = """
 
@@ -132,41 +134,27 @@ struct InstallCompletionsHelper {
         fi
         """
 
-        if fileContainsUnusedCompletions(atPath: rcFile) && !force {
-            print("✓ Completions already installed in ~/.bashrc".yellow)
-            print("  Use --force to reinstall".overlay0)
-            return
-        }
-
-        if force && fileContainsUnusedCompletions(atPath: rcFile) {
-            try removeExistingCompletionBlock(from: rcFile)
-        }
-
         try appendToFile(atPath: rcFile, content: completionLine)
         print("✓ Successfully installed completions to ~/.bashrc".green)
         printActivationInstructions(shell: .bash)
     }
 
-    private func installZshCompletions(homeDir: String, force: Bool) throws {
+    private func installZshCompletions(homeDir: String) throws {
         let variant = detectZshVariant()
 
         switch variant {
         case .ohMyZsh(let customPath):
-            try installZshCompletionsForOhMyZsh(customPath: customPath, force: force)
+            try installZshCompletionsForOhMyZsh(homeDir: homeDir, customPath: customPath)
         case .standard:
-            try installZshCompletionsStandard(homeDir: homeDir, force: force)
+            try installZshCompletionsStandard(homeDir: homeDir)
         }
     }
 
-    private func installZshCompletionsForOhMyZsh(customPath: String, force: Bool) throws {
+    private func installZshCompletionsForOhMyZsh(homeDir: String, customPath: String) throws {
         let completionsDir = "\(customPath)/completions"
         let completionFile = "\(completionsDir)/_unused"
 
-        if fileManager.fileExists(atPath: completionFile) && !force {
-            print("✓ Completions already installed at \(completionFile)".yellow)
-            print("  Use --force to reinstall".overlay0)
-            return
-        }
+        cleanupExistingZshCompletions(homeDir: homeDir, targetPath: completionFile)
 
         try fileManager.createDirectory(atPath: completionsDir, withIntermediateDirectories: true)
 
@@ -178,16 +166,12 @@ struct InstallCompletionsHelper {
         printActivationInstructions(shell: .zsh, isOhMyZsh: true)
     }
 
-    private func installZshCompletionsStandard(homeDir: String, force: Bool) throws {
+    private func installZshCompletionsStandard(homeDir: String) throws {
         let completionsDir = "\(homeDir)/.zsh/completions"
         let completionFile = "\(completionsDir)/_unused"
         let rcFile = "\(homeDir)/.zshrc"
 
-        if fileManager.fileExists(atPath: completionFile) && !force {
-            print("✓ Completions already installed at \(completionFile)".yellow)
-            print("  Use --force to reinstall".overlay0)
-            return
-        }
+        cleanupExistingZshCompletions(homeDir: homeDir, targetPath: completionFile)
 
         try fileManager.createDirectory(atPath: completionsDir, withIntermediateDirectories: true)
 
@@ -208,15 +192,11 @@ struct InstallCompletionsHelper {
         printActivationInstructions(shell: .zsh, isOhMyZsh: false)
     }
 
-    private func installFishCompletions(homeDir: String, force: Bool) throws {
+    private func installFishCompletions(homeDir: String) throws {
         let completionsDir = "\(homeDir)/.config/fish/completions"
         let completionFile = "\(completionsDir)/unused.fish"
 
-        if fileManager.fileExists(atPath: completionFile) && !force {
-            print("✓ Completions already installed at \(completionFile)".yellow)
-            print("  Use --force to reinstall".overlay0)
-            return
-        }
+        cleanupExistingFishCompletions(homeDir: homeDir, targetPath: completionFile)
 
         try fileManager.createDirectory(atPath: completionsDir, withIntermediateDirectories: true)
 
@@ -226,6 +206,57 @@ struct InstallCompletionsHelper {
         print("✓ Successfully installed completions to \(completionFile)".green)
         print("\n" + "Completions are now active!".teal.bold)
         print("Fish loads completions automatically.".overlay0)
+    }
+
+    private func cleanupExistingBashCompletions(homeDir: String) {
+        let rcFile = "\(homeDir)/.bashrc"
+
+        if fileContainsUnusedCompletions(atPath: rcFile) {
+            try? removeExistingCompletionBlock(from: rcFile)
+        }
+
+        let profileFile = "\(homeDir)/.bash_profile"
+        if fileContainsUnusedCompletions(atPath: profileFile) {
+            try? removeExistingCompletionBlock(from: profileFile)
+        }
+    }
+
+    private func cleanupExistingZshCompletions(homeDir: String, targetPath: String) {
+        var knownPaths = [
+            "\(homeDir)/.zsh/completions/_unused",
+            "\(homeDir)/.oh-my-zsh/custom/completions/_unused",
+            "/usr/local/share/zsh/site-functions/_unused",
+            "/opt/homebrew/share/zsh/site-functions/_unused"
+        ]
+
+        if let zshCustom = environment.environmentVariable("ZSH_CUSTOM") {
+            knownPaths.append("\(zshCustom)/completions/_unused")
+        }
+
+        if let zshPath = environment.environmentVariable("ZSH") {
+            knownPaths.append("\(zshPath)/custom/completions/_unused")
+        }
+
+        for path in knownPaths where fileManager.fileExists(atPath: path) {
+            try? fileManager.removeItem(atPath: path)
+        }
+
+        let rcFile = "\(homeDir)/.zshrc"
+        if targetPath != "\(homeDir)/.zsh/completions/_unused" && fileContainsFpathSetup(atPath: rcFile) {
+            try? removeFpathSetupBlock(from: rcFile)
+        }
+    }
+
+    private func cleanupExistingFishCompletions(homeDir: String, targetPath: String) {
+        let knownPaths = [
+            "\(homeDir)/.config/fish/completions/unused.fish",
+            "/usr/local/share/fish/vendor_completions.d/unused.fish",
+            "/opt/homebrew/share/fish/vendor_completions.d/unused.fish"
+        ]
+
+        for path in knownPaths where fileManager.fileExists(atPath: path) {
+            try? fileManager.removeItem(atPath: path)
+        }
     }
 
     private func fileContainsUnusedCompletions(atPath path: String) -> Bool {
@@ -265,6 +296,28 @@ struct InstallCompletionsHelper {
                     break
                 }
                 endIndex = content.index(endIndex, offsetBy: line.count + 1, limitedBy: content.endIndex) ?? content.endIndex
+            }
+
+            content.removeSubrange(startRange.lowerBound..<endIndex)
+            try fileManager.writeString(content, toFile: path)
+        }
+    }
+
+    private func removeFpathSetupBlock(from path: String) throws {
+        guard let data = fileManager.contents(atPath: path),
+              var content = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        if let startRange = content.range(of: "\n# Unused CLI completions - fpath setup") {
+            var endIndex = startRange.upperBound
+            let lines = content[startRange.upperBound...].split(separator: "\n", omittingEmptySubsequences: false)
+
+            for line in lines {
+                endIndex = content.index(endIndex, offsetBy: line.count + 1, limitedBy: content.endIndex) ?? content.endIndex
+                if line.contains("compinit") {
+                    break
+                }
             }
 
             content.removeSubrange(startRange.lowerBound..<endIndex)

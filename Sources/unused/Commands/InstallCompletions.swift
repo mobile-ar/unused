@@ -12,9 +12,6 @@ struct InstallCompletions: ParsableCommand {
         abstract: "Automatically install shell completions for your current shell"
     )
 
-    @Flag(name: .long, help: "Force reinstallation even if already installed")
-    var force: Bool = false
-
     func run() throws {
         print("→ Installing shell completions...".blue.bold)
 
@@ -31,7 +28,7 @@ struct InstallCompletions: ParsableCommand {
         print("✓ Detected shell: \(shell.rawValue)".green)
 
         do {
-            try helper.install(shell: shell, force: force)
+            try helper.install(shell: shell)
         } catch {
             print("⚠ Installation failed: \(error.localizedDescription)".red)
             throw ExitCode.failure

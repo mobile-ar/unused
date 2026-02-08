@@ -14,6 +14,7 @@ protocol FileManagerProtocol {
     func createFile(atPath path: String, contents: Data?)
     func writeString(_ string: String, toFile path: String) throws
     func removeItem(at url: URL) throws
+    func removeItem(atPath path: String) throws
     func enumerator(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) -> FileManager.DirectoryEnumerator?
     func enumerator(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options: FileManager.DirectoryEnumerationOptions) -> FileManager.DirectoryEnumerator?
 }
@@ -53,6 +54,10 @@ struct FileManagerWrapper: FileManagerProtocol {
 
     func removeItem(at url: URL) throws {
         try FileManager.default.removeItem(at: url)
+    }
+
+    func removeItem(atPath path: String) throws {
+        try FileManager.default.removeItem(atPath: path)
     }
 
     func enumerator(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) -> FileManager.DirectoryEnumerator? {

@@ -168,12 +168,13 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        try helper.install(shell: .fish, force: false)
+        try helper.install(shell: .fish)
 
         #expect(fileManager.createdDirectories.contains("/Users/testuser/.config/fish/completions"))
+        #expect(fileManager.writtenFiles["/Users/testuser/.config/fish/completions/unused.fish"] != nil)
     }
 
-    @Test func installFishSkipsWhenAlreadyInstalledAndNoForce() throws {
+    @Test func installFishReinstallsWhenAlreadyInstalled() throws {
         let fileManager = MockFileManager()
         fileManager.existingPaths.insert("/Users/testuser/.config/fish/completions/unused.fish")
         var environment = MockEnvironmentProvider()
@@ -185,25 +186,9 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        try helper.install(shell: .fish, force: false)
+        try helper.install(shell: .fish)
 
-        #expect(fileManager.createdDirectories.isEmpty)
-    }
-
-    @Test func installFishReinstallsWhenForced() throws {
-        let fileManager = MockFileManager()
-        fileManager.existingPaths.insert("/Users/testuser/.config/fish/completions/unused.fish")
-        var environment = MockEnvironmentProvider()
-        environment.variables["SHELL"] = "/usr/local/bin/fish"
-
-        let helper = InstallCompletionsHelper(
-            fileManager: fileManager,
-            environment: environment,
-            completionScriptProvider: MockCompletionScriptProvider()
-        )
-
-        try helper.install(shell: .fish, force: true)
-
+        #expect(fileManager.removedPaths.contains("/Users/testuser/.config/fish/completions/unused.fish"))
         #expect(fileManager.createdDirectories.contains("/Users/testuser/.config/fish/completions"))
     }
 
@@ -219,9 +204,10 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        try helper.install(shell: .zsh, force: false)
+        try helper.install(shell: .zsh)
 
         #expect(fileManager.createdDirectories.contains("/Users/testuser/.oh-my-zsh/custom/completions"))
+        #expect(fileManager.writtenFiles["/Users/testuser/.oh-my-zsh/custom/completions/_unused"] != nil)
     }
 
     @Test func installZshStandardUsesZshCompletionsDir() throws {
@@ -235,9 +221,48 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        try helper.install(shell: .zsh, force: false)
+        try helper.install(shell: .zsh)
 
         #expect(fileManager.createdDirectories.contains("/Users/testuser/.zsh/completions"))
+        #expect(fileManager.writtenFiles["/Users/testuser/.zsh/completions/_unused"] != nil)
+    }
+
+    @Test func installZshCleansUpDuplicateCompletions() throws {
+        let fileManager = MockFileManager()
+        fileManager.existingPaths.insert("/Users/testuser/.zsh/completions/_unused")
+        fileManager.existingPaths.insert("/Users/testuser/.oh-my-zsh/custom/completions/_unused")
+        var environment = MockEnvironmentProvider()
+        environment.variables["SHELL"] = "/bin/zsh"
+
+        let helper = InstallCompletionsHelper(
+            fileManager: fileManager,
+            environment: environment,
+            completionScriptProvider: MockCompletionScriptProvider()
+        )
+
+        try helper.install(shell: .zsh)
+
+        #expect(fileManager.removedPaths.contains("/Users/testuser/.zsh/completions/_unused"))
+        #expect(fileManager.removedPaths.contains("/Users/testuser/.oh-my-zsh/custom/completions/_unused"))
+    }
+
+    @Test func installZshOhMyZshCleansUpStandardLocation() throws {
+        let fileManager = MockFileManager()
+        fileManager.existingPaths.insert("/Users/testuser/.zsh/completions/_unused")
+        var environment = MockEnvironmentProvider()
+        environment.variables["SHELL"] = "/bin/zsh"
+        environment.variables["ZSH_CUSTOM"] = "/Users/testuser/.oh-my-zsh/custom"
+
+        let helper = InstallCompletionsHelper(
+            fileManager: fileManager,
+            environment: environment,
+            completionScriptProvider: MockCompletionScriptProvider()
+        )
+
+        try helper.install(shell: .zsh)
+
+        #expect(fileManager.removedPaths.contains("/Users/testuser/.zsh/completions/_unused"))
+        #expect(fileManager.createdDirectories.contains("/Users/testuser/.oh-my-zsh/custom/completions"))
     }
 
     @Test func installBashAppendsToBashrc() throws {
@@ -252,14 +277,16 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        try helper.install(shell: .bash, force: false)
+        try helper.install(shell: .bash)
 
-        #expect(fileManager.existingPaths.contains("/Users/testuser/.bashrc"))
+        let content = fileManager.writtenFiles["/Users/testuser/.bashrc"] ?? ""
+        #expect(content.contains("# Unused CLI completions"))
+        #expect(content.contains("eval"))
     }
 
-    @Test func installBashSkipsWhenAlreadyInstalledAndNoForce() throws {
+    @Test func installBashReinstallsWhenAlreadyInstalled() throws {
         let fileManager = MockFileManager()
-        fileManager.setFileContent("# Unused CLI completions\neval", atPath: "/Users/testuser/.bashrc")
+        fileManager.setFileContent("# existing\n# Unused CLI completions\nif command -v unused &> /dev/null; then\n    eval \"$(unused --generate-completion-script=bash)\"\nfi\n", atPath: "/Users/testuser/.bashrc")
         var environment = MockEnvironmentProvider()
         environment.variables["SHELL"] = "/bin/bash"
 
@@ -269,10 +296,29 @@ struct InstallCompletionsHelperTests {
             completionScriptProvider: MockCompletionScriptProvider()
         )
 
-        let originalContent = fileManager.fileContents["/Users/testuser/.bashrc"]
+        try helper.install(shell: .bash)
 
-        try helper.install(shell: .bash, force: false)
+        let content = fileManager.writtenFiles["/Users/testuser/.bashrc"] ?? ""
+        let occurrences = content.components(separatedBy: "# Unused CLI completions").count - 1
+        #expect(occurrences == 1)
+    }
 
-        #expect(fileManager.fileContents["/Users/testuser/.bashrc"] == originalContent)
+    @Test func installFishCleansUpSystemLocations() throws {
+        let fileManager = MockFileManager()
+        fileManager.existingPaths.insert("/usr/local/share/fish/vendor_completions.d/unused.fish")
+        fileManager.existingPaths.insert("/opt/homebrew/share/fish/vendor_completions.d/unused.fish")
+        var environment = MockEnvironmentProvider()
+        environment.variables["SHELL"] = "/usr/local/bin/fish"
+
+        let helper = InstallCompletionsHelper(
+            fileManager: fileManager,
+            environment: environment,
+            completionScriptProvider: MockCompletionScriptProvider()
+        )
+
+        try helper.install(shell: .fish)
+
+        #expect(fileManager.removedPaths.contains("/usr/local/share/fish/vendor_completions.d/unused.fish"))
+        #expect(fileManager.removedPaths.contains("/opt/homebrew/share/fish/vendor_completions.d/unused.fish"))
     }
 }

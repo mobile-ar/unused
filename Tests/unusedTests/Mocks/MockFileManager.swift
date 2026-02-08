@@ -14,6 +14,7 @@ final class MockFileManager: FileManagerProtocol, @unchecked Sendable {
     var createdFiles: [String] = []
     var writtenFiles: [String: String] = [:]
     var removedItems: [URL] = []
+    var removedPaths: [String] = []
 
     var homeDirectoryForCurrentUser: URL { homeDirectory }
     var currentDirectoryPath: String { currentDirectory }
@@ -55,6 +56,11 @@ final class MockFileManager: FileManagerProtocol, @unchecked Sendable {
         existingPaths.remove(url.path)
     }
 
+    func removeItem(atPath path: String) throws {
+        removedPaths.append(path)
+        existingPaths.remove(path)
+    }
+
     func enumerator(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?) -> FileManager.DirectoryEnumerator? {
         nil
     }
@@ -79,5 +85,6 @@ final class MockFileManager: FileManagerProtocol, @unchecked Sendable {
         createdFiles.removeAll()
         writtenFiles.removeAll()
         removedItems.removeAll()
+        removedPaths.removeAll()
     }
 }
