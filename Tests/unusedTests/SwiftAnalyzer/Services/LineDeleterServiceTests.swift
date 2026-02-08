@@ -19,7 +19,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [2], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [2], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -37,7 +37,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [2, 4], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [2, 4], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -55,7 +55,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [2, 3, 4], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [2, 3, 4], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -139,7 +139,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [1, 2, 3], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [1, 2, 3], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -155,7 +155,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [1], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [1], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -171,7 +171,7 @@ struct LineDeleterServiceTests {
             """)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deleteLines(from: tempFile, lineNumbers: [3], dryRun: false)
+        let result = service.deleteLines(from: tempFile, lineNumbers: [3], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -237,7 +237,7 @@ struct LineDeleterServiceTests {
             DeletionRequest(item: item2, mode: .specificLines([4, 5]))
         ]
 
-        let result = service.deleteLines(from: tempFile, requests: requests, dryRun: false)
+        let result = service.deleteLines(from: tempFile, requests: requests, dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.success == true)
 
@@ -469,6 +469,135 @@ struct LineDeleterServiceTests {
         #expect(partial.line == 3)
         #expect(partial.startColumn == 5)
         #expect(partial.endColumn == 15)
+    }
+
+    @Test func testDeleteLinesDeletesEmptyFile() throws {
+        let content = """
+            //
+            //  Created by Fernando Romiti on 08/02/2025.
+            //
+
+            import ArgumentParser
+
+            enum OtherShell: String, ExpressibleByArgument {
+                case bash, zsh, fish
+            }
+            """
+        let tempFile = createTempFile(content: content)
+
+        let result = service.deleteLines(from: tempFile, lineNumbers: Set(7...9), dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == true)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == false)
+    }
+
+    @Test func testDeleteLinesDoesNotDeleteEmptyFileWhenDisabled() throws {
+        let content = """
+            //
+            //  Created by Fernando Romiti on 08/02/2025.
+            //
+
+            import ArgumentParser
+
+            enum OtherShell: String, ExpressibleByArgument {
+                case bash, zsh, fish
+            }
+            """
+        let tempFile = createTempFile(content: content)
+        defer { try? FileManager.default.removeItem(atPath: tempFile) }
+
+        let result = service.deleteLines(from: tempFile, lineNumbers: Set(7...9), dryRun: false, deleteEmptyFiles: false)
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == false)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == true)
+    }
+
+    @Test func testDeleteLinesDoesNotDeleteNonEmptyFile() throws {
+        let content = """
+            import Foundation
+
+            struct KeepMe {
+                var value: Int
+            }
+
+            func unusedFunction() {}
+            """
+        let tempFile = createTempFile(content: content)
+        defer { try? FileManager.default.removeItem(atPath: tempFile) }
+
+        let result = service.deleteLines(from: tempFile, lineNumbers: [7], dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == false)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == true)
+
+        let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
+        #expect(newContent.contains("KeepMe"))
+        #expect(!newContent.contains("unusedFunction"))
+    }
+
+    @Test func testDeleteMixedDeletesEmptyFile() throws {
+        let content = """
+            //
+            //  Header comment
+            //
+
+            import Foundation
+
+            func onlyFunction(param1: Int, param2: String) {
+                print("test")
+            }
+            """
+        let tempFile = createTempFile(content: content)
+
+        let result = service.deleteMixed(
+            from: tempFile,
+            wholeLineNumbers: Set(7...9),
+            partialDeletions: [],
+            dryRun: false,
+            deleteEmptyFiles: true
+        )
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == true)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == false)
+    }
+
+    @Test func testDeletePartialLinesDeletesEmptyFile() throws {
+        let content = """
+            import Foundation
+
+            let x = 1
+            """
+        let tempFile = createTempFile(content: content)
+
+        let partialDeletion = PartialLineDeletion(line: 3, startColumn: 1, endColumn: 10)
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: [partialDeletion], dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == true)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == false)
+    }
+
+    @Test func testDryRunDoesNotDeleteEmptyFile() throws {
+        let content = """
+            import Foundation
+
+            enum OnlyEnum { case a }
+            """
+        let tempFile = createTempFile(content: content)
+        defer { try? FileManager.default.removeItem(atPath: tempFile) }
+
+        let result = service.deleteLines(from: tempFile, lineNumbers: [3], dryRun: true, deleteEmptyFiles: true)
+
+        #expect(result.success == true)
+        #expect(result.fileDeleted == false)
+        #expect(FileManager.default.fileExists(atPath: tempFile) == true)
+
+        let existingContent = try String(contentsOfFile: tempFile, encoding: .utf8)
+        #expect(existingContent.contains("OnlyEnum"))
     }
 
     private func createTempFile(content: String) -> String {

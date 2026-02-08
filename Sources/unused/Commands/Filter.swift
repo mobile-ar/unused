@@ -201,11 +201,18 @@ struct Filter: AsyncParsableCommand {
 
         print("\nDeleting declarations...".peach)
 
-        let result = await codeDeleter.delete(requests: requestsToDelete, dryRun: false)
+        let result = await codeDeleter.delete(requests: requestsToDelete, dryRun: false, deleteEmptyFiles: true)
 
         print("\nDeletion complete:".bold)
         print("  Files processed: \(result.totalFiles)".subtext0)
         print("  Declarations deleted: \(result.totalDeleted)".green)
+
+        if result.filesDeleted > 0 {
+            print("  Empty files deleted: \(result.filesDeleted)".green)
+            for filePath in result.deletedFilePaths {
+                print("    \(filePath)".overlay0)
+            }
+        }
 
         if result.failedFiles > 0 {
             print("  Failed files: \(result.failedFiles)".red)

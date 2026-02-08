@@ -12,6 +12,15 @@ struct FileDeletionResult {
     let deletedCount: Int
     let success: Bool
     let error: Error?
+    let fileDeleted: Bool
+
+    init(filePath: String, deletedCount: Int, success: Bool, error: Error?, fileDeleted: Bool = false) {
+        self.filePath = filePath
+        self.deletedCount = deletedCount
+        self.success = success
+        self.error = error
+        self.fileDeleted = fileDeleted
+    }
 }
 
 /// Result of a deletion operation across multiple files
@@ -20,9 +29,14 @@ struct DeletionResult {
     let totalDeleted: Int
     let totalFiles: Int
     let successfulFiles: Int
+    let deletedFilePaths: [String]
 
     var failedFiles: Int {
         totalFiles - successfulFiles
+    }
+
+    var filesDeleted: Int {
+        deletedFilePaths.count
     }
 }
 
@@ -38,10 +52,11 @@ struct CodeDeleterService {
     /// - Parameters:
     ///   - items: The report items to delete
     ///   - dryRun: If true, only simulates deletion without modifying files
+    ///   - deleteEmptyFiles: If true, deletes files that become empty after deletion
     /// - Returns: The result of the deletion operation
-    func delete(items: [ReportItem], dryRun: Bool = false) async -> DeletionResult {
+    func delete(items: [ReportItem], dryRun: Bool = false, deleteEmptyFiles: Bool = true) async -> DeletionResult {
         let requests = items.map { DeletionRequest(item: $0, mode: .fullDeclaration) }
-        return await delete(requests: requests, dryRun: dryRun)
+        return await delete(requests: requests, dryRun: dryRun, deleteEmptyFiles: deleteEmptyFiles)
     }
 
     /// Deletes based on deletion requests which may include full declarations or specific lines
@@ -49,11 +64,12 @@ struct CodeDeleterService {
     ///   - requests: The deletion requests specifying what to delete
     ///   - dryRun: If true, only simulates deletion without modifying files
     /// - Returns: The result of the deletion operation
-    func delete(requests: [DeletionRequest], dryRun: Bool = false) async -> DeletionResult {
+    func delete(requests: [DeletionRequest], dryRun: Bool = false, deleteEmptyFiles: Bool = true) async -> DeletionResult {
         let groupedRequests = groupRequestsByFile(requests)
         var fileResults: [FileDeletionResult] = []
         var totalDeleted = 0
         var successfulFiles = 0
+        var deletedFilePaths: [String] = []
 
         for (filePath, fileRequests) in groupedRequests {
             var allLinesToDelete = Set<Int>()
@@ -110,36 +126,40 @@ struct CodeDeleterService {
                     error: nil
                 )
             } else if allPartialDeletions.isEmpty {
-                let lineResult = lineDeleterService.deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun)
+                let lineResult = lineDeleterService.deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun, deleteEmptyFiles: deleteEmptyFiles)
                 let deletedCount = lineResult.success ? (fullDeclarationCount + lineBasedLinesCount) : 0
                 result = FileDeletionResult(
                     filePath: filePath,
                     deletedCount: deletedCount,
                     success: lineResult.success,
-                    error: lineResult.error
+                    error: lineResult.error,
+                    fileDeleted: lineResult.fileDeleted
                 )
             } else if allLinesToDelete.isEmpty {
-                let lineResult = lineDeleterService.deletePartialLines(from: filePath, partialDeletions: allPartialDeletions, dryRun: dryRun)
+                let lineResult = lineDeleterService.deletePartialLines(from: filePath, partialDeletions: allPartialDeletions, dryRun: dryRun, deleteEmptyFiles: deleteEmptyFiles)
                 let deletedCount = lineResult.success ? partialDeletionCount : 0
                 result = FileDeletionResult(
                     filePath: filePath,
                     deletedCount: deletedCount,
                     success: lineResult.success,
-                    error: lineResult.error
+                    error: lineResult.error,
+                    fileDeleted: lineResult.fileDeleted
                 )
             } else {
                 let lineResult = lineDeleterService.deleteMixed(
                     from: filePath,
                     wholeLineNumbers: allLinesToDelete,
                     partialDeletions: allPartialDeletions,
-                    dryRun: dryRun
+                    dryRun: dryRun,
+                    deleteEmptyFiles: deleteEmptyFiles
                 )
                 let deletedCount = lineResult.success ? (fullDeclarationCount + lineBasedLinesCount + partialDeletionCount) : 0
                 result = FileDeletionResult(
                     filePath: filePath,
                     deletedCount: deletedCount,
                     success: lineResult.success,
-                    error: lineResult.error
+                    error: lineResult.error,
+                    fileDeleted: lineResult.fileDeleted
                 )
             }
 
@@ -148,6 +168,9 @@ struct CodeDeleterService {
             if result.success {
                 successfulFiles += 1
                 totalDeleted += result.deletedCount
+                if result.fileDeleted {
+                    deletedFilePaths.append(filePath)
+                }
             }
         }
 
@@ -155,7 +178,8 @@ struct CodeDeleterService {
             fileResults: fileResults,
             totalDeleted: totalDeleted,
             totalFiles: groupedRequests.count,
-            successfulFiles: successfulFiles
+            successfulFiles: successfulFiles,
+            deletedFilePaths: deletedFilePaths
         )
     }
 

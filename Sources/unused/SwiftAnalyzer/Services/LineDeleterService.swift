@@ -8,17 +8,25 @@ struct LineDeletionResult {
     let filePath: String
     let success: Bool
     let error: Error?
+    let fileDeleted: Bool
 
-    init(filePath: String, success: Bool, error: Error?) {
+    init(filePath: String, success: Bool, error: Error?, fileDeleted: Bool = false) {
         self.filePath = filePath
         self.success = success
         self.error = error
+        self.fileDeleted = fileDeleted
     }
 }
 
 struct LineDeleterService {
 
-    func deleteLines(from filePath: String, lineNumbers: Set<Int>, dryRun: Bool = false) -> LineDeletionResult {
+    private let emptyFileDetector: EmptyFileDetectorService
+
+    init(emptyFileDetector: EmptyFileDetectorService = EmptyFileDetectorService()) {
+        self.emptyFileDetector = emptyFileDetector
+    }
+
+    func deleteLines(from filePath: String, lineNumbers: Set<Int>, dryRun: Bool = false, deleteEmptyFiles: Bool = true) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)
             let lines = source.components(separatedBy: "\n")
@@ -35,18 +43,25 @@ struct LineDeleterService {
                 }
             }
 
+            let newContent = newLines.joined(separator: "\n")
+            let isFileEmpty = emptyFileDetector.isEmpty(content: newContent)
+
             if !dryRun && deletedCount > 0 {
-                let newContent = newLines.joined(separator: "\n")
-                try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                if isFileEmpty && deleteEmptyFiles {
+                    try FileManager.default.removeItem(atPath: filePath)
+                    return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: true)
+                } else {
+                    try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                }
             }
 
-            return LineDeletionResult(filePath: filePath, success: true, error: nil)
+            return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: false)
         } catch {
             return LineDeletionResult(filePath: filePath, success: false, error: error)
         }
     }
 
-    func deleteLines(from filePath: String, requests: [DeletionRequest], dryRun: Bool = false) -> LineDeletionResult {
+    func deleteLines(from filePath: String, requests: [DeletionRequest], dryRun: Bool = false, deleteEmptyFiles: Bool = true) -> LineDeletionResult {
         let allLinesToDelete = requests.reduce(into: Set<Int>()) { result, request in
             if let lines = request.linesToDelete {
                 result.formUnion(lines)
@@ -57,10 +72,10 @@ struct LineDeleterService {
             return LineDeletionResult(filePath: filePath, success: true, error: nil)
         }
 
-        return deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun)
+        return deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun, deleteEmptyFiles: deleteEmptyFiles)
     }
 
-    func deletePartialLines(from filePath: String, partialDeletions: [PartialLineDeletion], dryRun: Bool = false) -> LineDeletionResult {
+    func deletePartialLines(from filePath: String, partialDeletions: [PartialLineDeletion], dryRun: Bool = false, deleteEmptyFiles: Bool = true) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)
             var lines = source.components(separatedBy: "\n")
@@ -83,18 +98,25 @@ struct LineDeleterService {
                 lines[lineIndex] = line
             }
 
+            let newContent = lines.joined(separator: "\n")
+            let isFileEmpty = emptyFileDetector.isEmpty(content: newContent)
+
             if !dryRun && deletedPartialCount > 0 {
-                let newContent = lines.joined(separator: "\n")
-                try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                if isFileEmpty && deleteEmptyFiles {
+                    try FileManager.default.removeItem(atPath: filePath)
+                    return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: true)
+                } else {
+                    try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                }
             }
 
-            return LineDeletionResult(filePath: filePath, success: true, error: nil)
+            return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: false)
         } catch {
             return LineDeletionResult(filePath: filePath, success: false, error: error)
         }
     }
 
-    func deleteMixed(from filePath: String, wholeLineNumbers: Set<Int>, partialDeletions: [PartialLineDeletion], dryRun: Bool = false) -> LineDeletionResult {
+    func deleteMixed(from filePath: String, wholeLineNumbers: Set<Int>, partialDeletions: [PartialLineDeletion], dryRun: Bool = false, deleteEmptyFiles: Bool = true) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)
             var lines = source.components(separatedBy: "\n")
@@ -135,12 +157,19 @@ struct LineDeleterService {
                 }
             }
 
+            let newContent = newLines.joined(separator: "\n")
+            let isFileEmpty = emptyFileDetector.isEmpty(content: newContent)
+
             if !dryRun && (deletedLineCount > 0 || deletedPartialCount > 0) {
-                let newContent = newLines.joined(separator: "\n")
-                try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                if isFileEmpty && deleteEmptyFiles {
+                    try FileManager.default.removeItem(atPath: filePath)
+                    return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: true)
+                } else {
+                    try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+                }
             }
 
-            return LineDeletionResult(filePath: filePath, success: true, error: nil)
+            return LineDeletionResult(filePath: filePath, success: true, error: nil, fileDeleted: false)
         } catch {
             return LineDeletionResult(filePath: filePath, success: false, error: error)
         }

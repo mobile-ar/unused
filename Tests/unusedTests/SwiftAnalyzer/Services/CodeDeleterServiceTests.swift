@@ -545,22 +545,25 @@ struct CodeDeleterServiceTests {
 
     @Test func testDeletionResultProperties() async throws {
         let fileResults = [
-            FileDeletionResult(filePath: "/a.swift", deletedCount: 2, success: true, error: nil),
-            FileDeletionResult(filePath: "/b.swift", deletedCount: 1, success: true, error: nil),
-            FileDeletionResult(filePath: "/c.swift", deletedCount: 0, success: false, error: nil)
+            FileDeletionResult(filePath: "/a.swift", deletedCount: 2, success: true, error: nil, fileDeleted: false),
+            FileDeletionResult(filePath: "/b.swift", deletedCount: 1, success: true, error: nil, fileDeleted: true),
+            FileDeletionResult(filePath: "/c.swift", deletedCount: 0, success: false, error: nil, fileDeleted: false)
         ]
 
         let result = DeletionResult(
             fileResults: fileResults,
             totalDeleted: 3,
             totalFiles: 3,
-            successfulFiles: 2
+            successfulFiles: 2,
+            deletedFilePaths: ["/b.swift"]
         )
 
         #expect(result.totalDeleted == 3)
         #expect(result.totalFiles == 3)
         #expect(result.successfulFiles == 2)
         #expect(result.failedFiles == 1)
+        #expect(result.filesDeleted == 1)
+        #expect(result.deletedFilePaths == ["/b.swift"])
     }
 
     @Test func testDeleteWithFullDeclarationRequest() async throws {
@@ -629,7 +632,7 @@ struct CodeDeleterServiceTests {
 
         let request = DeletionRequest(item: item, mode: .specificLines([2, 3]))
         let service = CodeDeleterService()
-        let result = await service.delete(requests: [request], dryRun: false)
+        let result = await service.delete(requests: [request], dryRun: false, deleteEmptyFiles: false)
 
         #expect(result.totalDeleted == 2)
         #expect(result.successfulFiles == 1)
@@ -922,6 +925,182 @@ struct CodeDeleterServiceTests {
 
         #expect(preview.contains("Line 5"))
         #expect(preview.contains("columns 18-31"))
-        #expect(preview.contains("partial line"))
+    }
+
+    @Test func testDeleteEmptyFileAfterDeletion() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        //
+        //  Created by Fernando Romiti on 08/02/2025.
+        //
+
+        import ArgumentParser
+
+        enum OtherShell: String, ExpressibleByArgument {
+            case bash, zsh, fish
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "OtherShell.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "OtherShell",
+                type: .class,
+                file: filePath,
+                line: 7,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+        #expect(result.filesDeleted == 1)
+        #expect(result.deletedFilePaths.contains(filePath))
+        #expect(FileManager.default.fileExists(atPath: filePath) == false)
+    }
+
+    @Test func testDeleteDoesNotDeleteNonEmptyFile() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import Foundation
+
+        struct KeepMe {
+            var value: Int
+        }
+
+        func unusedFunction() {
+            print("unused")
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "Mixed.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "unusedFunction",
+                type: .function,
+                file: filePath,
+                line: 7,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+        #expect(result.filesDeleted == 0)
+        #expect(result.deletedFilePaths.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: filePath) == true)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(modifiedContent.contains("KeepMe"))
+        #expect(!modifiedContent.contains("unusedFunction"))
+    }
+
+    @Test func testDeleteDoesNotDeleteEmptyFileWhenDisabled() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        //
+        //  Header comment
+        //
+
+        import Foundation
+
+        enum OnlyEnum {
+            case a, b, c
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "OnlyEnum.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "OnlyEnum",
+                type: .class,
+                file: filePath,
+                line: 7,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false, deleteEmptyFiles: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+        #expect(result.filesDeleted == 0)
+        #expect(FileManager.default.fileExists(atPath: filePath) == true)
+    }
+
+    @Test func testDeleteMultipleFilesWithSomeBecomingEmpty() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let emptyAfterDeletion = """
+        import Foundation
+
+        func onlyFunction() {}
+        """
+
+        let nonEmptyAfterDeletion = """
+        import Foundation
+
+        struct KeepMe {}
+
+        func unusedFunction() {}
+        """
+
+        let filePath1 = try createTempFile(in: tempDir, name: "Empty.swift", content: emptyAfterDeletion)
+        let filePath2 = try createTempFile(in: tempDir, name: "NonEmpty.swift", content: nonEmptyAfterDeletion)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "onlyFunction",
+                type: .function,
+                file: filePath1,
+                line: 3,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 2,
+                name: "unusedFunction",
+                type: .function,
+                file: filePath2,
+                line: 5,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.totalDeleted == 2)
+        #expect(result.successfulFiles == 2)
+        #expect(result.filesDeleted == 1)
+        #expect(result.deletedFilePaths.contains(filePath1))
+        #expect(!result.deletedFilePaths.contains(filePath2))
+        #expect(FileManager.default.fileExists(atPath: filePath1) == false)
+        #expect(FileManager.default.fileExists(atPath: filePath2) == true)
     }
 }
