@@ -23,7 +23,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
 
@@ -51,7 +50,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
 
@@ -85,7 +83,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
 
@@ -93,28 +90,6 @@ struct CleanCommandTests {
         #expect(!FileManager.default.fileExists(atPath: unusedFile2.path))
         #expect(!FileManager.default.fileExists(atPath: unusedFile3.path))
         #expect(!FileManager.default.fileExists(atPath: unusedFile4.path))
-    }
-
-    @Test func testCleanDryRunDoesNotDeleteFiles() async throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-        defer {
-            try? FileManager.default.removeItem(at: tempDir)
-        }
-
-        let unusedFile = tempDir.appendingPathComponent(ReportService.reportFileName)
-        try "test content".write(to: unusedFile, atomically: true, encoding: .utf8)
-
-        #expect(FileManager.default.fileExists(atPath: unusedFile.path))
-
-        var clean = Clean()
-        clean.directory = tempDir.path
-        clean.dryRun = true
-
-        try clean.run()
-
-        #expect(FileManager.default.fileExists(atPath: unusedFile.path))
     }
 
     @Test func testCleanIgnoresBuildDirectory() async throws {
@@ -136,7 +111,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
 
@@ -154,7 +128,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
     }
@@ -177,7 +150,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = tempDir.path
-        clean.dryRun = false
 
         try clean.run()
 
@@ -191,7 +163,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = nonExistentPath
-        clean.dryRun = false
 
         #expect(throws: (any Error).self) {
             try clean.run()
@@ -211,7 +182,6 @@ struct CleanCommandTests {
 
         var clean = Clean()
         clean.directory = testFile.path
-        clean.dryRun = false
 
         #expect(throws: (any Error).self) {
             try clean.run()

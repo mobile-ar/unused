@@ -25,10 +25,7 @@ struct RelatedCodeFinderService {
         for item in items {
             let relatedDeletions = try await findRelatedCode(for: item)
             if !relatedDeletions.isEmpty {
-                groups.append(RelatedDeletionGroup(
-                    primaryItem: item,
-                    relatedDeletions: relatedDeletions
-                ))
+                groups.append(RelatedDeletionGroup(relatedDeletions: relatedDeletions))
             }
         }
 
@@ -63,7 +60,7 @@ struct RelatedCodeFinderService {
                let paramInfo = initVisitor.initParameters[paramName],
                paramInfo.usedOnlyForPropertyAssignment {
                 let isMultiLineParameter = paramInfo.lineRange.lowerBound != paramInfo.lineRange.upperBound
-                
+
                 let paramLineIndex = paramInfo.lineRange.lowerBound - 1
                 let isParameterOnOwnLine: Bool
                 if paramLineIndex >= 0 && paramLineIndex < sourceLines.count {
@@ -75,9 +72,9 @@ struct RelatedCodeFinderService {
                 } else {
                     isParameterOnOwnLine = false
                 }
-                
+
                 let shouldUseLineDeletion = isMultiLineParameter || isParameterOnOwnLine
-                
+
                 if shouldUseLineDeletion {
                     relatedDeletions.append(RelatedDeletion(
                         filePath: item.file,
@@ -181,34 +178,6 @@ struct RelatedCodeFinderService {
         }
 
         return relatedDeletions
-    }
-
-    func findSwitchCasesForEnumCase(
-        enumTypeName: String,
-        enumCaseName: String,
-        in directory: URL
-    ) async throws -> [SwitchCaseInfo] {
-        var allSwitchCases: [SwitchCaseInfo] = []
-
-        let swiftFiles = try findSwiftFiles(in: directory)
-
-        for swiftFile in swiftFiles {
-            let filePath = swiftFile.path
-            let source = try String(contentsOf: swiftFile, encoding: .utf8)
-            let sourceFile = Parser.parse(source: source)
-
-            let switchCaseVisitor = SwitchCaseVisitor(
-                enumTypeName: enumTypeName,
-                enumCaseName: enumCaseName,
-                filePath: filePath,
-                sourceFile: sourceFile
-            )
-            switchCaseVisitor.walk(sourceFile)
-
-            allSwitchCases.append(contentsOf: switchCaseVisitor.switchCases)
-        }
-
-        return allSwitchCases
     }
 
     private func findSwiftFiles(in directory: URL) throws -> [URL] {

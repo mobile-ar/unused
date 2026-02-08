@@ -9,7 +9,7 @@ struct RelatedDeletion: Equatable, Hashable {
     let description: String
     let parentDeclaration: ReportItem
     let partialDeletion: PartialLineDeletion?
-    
+
     init(
         filePath: String,
         lineRange: ClosedRange<Int>,
@@ -25,13 +25,12 @@ struct RelatedDeletion: Equatable, Hashable {
         self.parentDeclaration = parentDeclaration
         self.partialDeletion = partialDeletion
     }
-    
+
     var isPartialLineDeletion: Bool {
         partialDeletion != nil
     }
 }
 
 struct RelatedDeletionGroup {
-    let primaryItem: ReportItem
     let relatedDeletions: [RelatedDeletion]
 }

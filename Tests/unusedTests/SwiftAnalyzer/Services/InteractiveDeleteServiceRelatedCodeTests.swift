@@ -8,6 +8,16 @@ import Foundation
 
 struct InteractiveDeleteServiceRelatedCodeTests {
 
+    private func isRelatedCode(_ request: DeletionRequest) -> Bool {
+        if case .relatedCode = request.mode { return true }
+        return false
+    }
+
+    private func getRelatedDeletion(_ request: DeletionRequest) -> RelatedDeletion? {
+        if case .relatedCode(let related) = request.mode { return related }
+        return nil
+    }
+
     @Test func testConfirmDeletionsFindsRelatedCodeWithExactLineNumbers() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -47,16 +57,16 @@ struct InteractiveDeleteServiceRelatedCodeTests {
         #expect(requests[0].isFullDeclaration == true)
         #expect(requests[0].item.line == 2)
 
-        let relatedRequests = requests.filter { $0.isRelatedCode }
+        let relatedRequests = requests.filter { isRelatedCode($0) }
         #expect(relatedRequests.count == 2)
 
         // Verify init assignment is on line 5 (same line as init)
-        let assignmentRequest = relatedRequests.first { $0.relatedDeletion?.description.contains("Init assignment") == true }
+        let assignmentRequest = relatedRequests.first { getRelatedDeletion($0)?.description.contains("Init assignment") == true }
         #expect(assignmentRequest != nil)
         #expect(assignmentRequest?.linesToDelete?.contains(5) == true)
 
         // Verify init parameter - since it's on same line as init, uses partial deletion
-        let parameterRequest = relatedRequests.first { $0.relatedDeletion?.description.contains("Init parameter") == true }
+        let parameterRequest = relatedRequests.first { getRelatedDeletion($0)?.description.contains("Init parameter") == true }
         #expect(parameterRequest != nil)
         // Parameter on same line as init uses partial deletion, so linesToDelete is nil
         #expect(parameterRequest?.isPartialLineDeletion == true)
@@ -105,16 +115,16 @@ struct InteractiveDeleteServiceRelatedCodeTests {
         #expect(requests[0].isFullDeclaration == true)
         #expect(requests[0].item.line == 3)
 
-        let relatedRequests = requests.filter { $0.isRelatedCode }
+        let relatedRequests = requests.filter { isRelatedCode($0) }
         #expect(relatedRequests.count == 1)
 
         // Verify init assignment is on line 7
         let assignmentRequest = relatedRequests.first
-        #expect(assignmentRequest?.relatedDeletion?.description.contains("Init assignment") == true)
+        #expect(getRelatedDeletion(assignmentRequest!)?.description.contains("Init assignment") == true)
         #expect(assignmentRequest?.linesToDelete?.contains(7) == true)
 
         // Should NOT have any parameter request
-        let parameterRequest = relatedRequests.first { $0.relatedDeletion?.description.contains("Init parameter") == true }
+        let parameterRequest = relatedRequests.first { getRelatedDeletion($0)?.description.contains("Init parameter") == true }
         #expect(parameterRequest == nil)
     }
 
@@ -154,7 +164,7 @@ struct InteractiveDeleteServiceRelatedCodeTests {
 
         #expect(requests.count == 1)
         #expect(requests[0].isFullDeclaration == true)
-        #expect(!requests.contains { $0.isRelatedCode })
+        #expect(!requests.contains { isRelatedCode($0) })
     }
 
     @Test func testConfirmDeletionsAllDeletesAllRelatedWithCorrectLines() async throws {
@@ -194,26 +204,26 @@ struct InteractiveDeleteServiceRelatedCodeTests {
         let fullDeclarationCount = requests.filter { $0.isFullDeclaration }.count
         #expect(fullDeclarationCount == 2)
 
-        let relatedCount = requests.filter { $0.isRelatedCode }.count
+        let relatedCount = requests.filter { isRelatedCode($0) }.count
         #expect(relatedCount == 4)
 
         // Verify name-related requests (self.name = name is on line 6)
         let nameAssignment = requests.first {
-            $0.isRelatedCode &&
-            $0.relatedDeletion?.description.contains("Init assignment") == true &&
-            $0.relatedDeletion?.sourceSnippet.contains("self.name") == true
+            isRelatedCode($0) &&
+            getRelatedDeletion($0)?.description.contains("Init assignment") == true &&
+            getRelatedDeletion($0)?.sourceSnippet.contains("self.name") == true
         }
         #expect(nameAssignment != nil)
-        #expect(nameAssignment?.relatedDeletion?.lineRange.contains(6) == true)
+        #expect(getRelatedDeletion(nameAssignment!)?.lineRange.contains(6) == true)
 
         // Verify age-related requests (self.age = age is on line 7)
         let ageAssignment = requests.first {
-            $0.isRelatedCode &&
-            $0.relatedDeletion?.description.contains("Init assignment") == true &&
-            $0.relatedDeletion?.sourceSnippet.contains("self.age") == true
+            isRelatedCode($0) &&
+            getRelatedDeletion($0)?.description.contains("Init assignment") == true &&
+            getRelatedDeletion($0)?.sourceSnippet.contains("self.age") == true
         }
         #expect(ageAssignment != nil)
-        #expect(ageAssignment?.relatedDeletion?.lineRange.contains(7) == true)
+        #expect(getRelatedDeletion(ageAssignment!)?.lineRange.contains(7) == true)
     }
 
     @Test func testConfirmDeletionsQuitStopsEarly() async throws {
@@ -282,7 +292,7 @@ struct InteractiveDeleteServiceRelatedCodeTests {
 
         #expect(requests.count == 1)
         #expect(requests[0].isFullDeclaration == true)
-        #expect(!requests.contains { $0.isRelatedCode })
+        #expect(!requests.contains { isRelatedCode($0) })
     }
 
     @Test func testDeletionRequestFromRelatedDeletion() {
@@ -306,8 +316,8 @@ struct InteractiveDeleteServiceRelatedCodeTests {
 
         let request = DeletionRequest.fromRelatedDeletion(related)
 
-        #expect(request.isRelatedCode == true)
-        #expect(request.relatedDeletion == related)
+        #expect(isRelatedCode(request) == true)
+        #expect(getRelatedDeletion(request) == related)
         #expect(request.linesToDelete == Set([15]))
     }
 
@@ -352,14 +362,14 @@ struct InteractiveDeleteServiceRelatedCodeTests {
 
         // Verify init assignment is on line 6 (self.timeout = timeout)
         let assignmentRequest = requests.first {
-            $0.isRelatedCode && $0.relatedDeletion?.description.contains("Init assignment") == true
+            isRelatedCode($0) && getRelatedDeletion($0)?.description.contains("Init assignment") == true
         }
         #expect(assignmentRequest != nil)
-        #expect(assignmentRequest?.relatedDeletion?.lineRange.contains(6) == true)
+        #expect(getRelatedDeletion(assignmentRequest!)?.lineRange.contains(6) == true)
 
         // Verify init parameter - since it's on same line as init, uses partial deletion
         let parameterRequest = requests.first {
-            $0.isRelatedCode && $0.relatedDeletion?.description.contains("Init parameter") == true
+            isRelatedCode($0) && getRelatedDeletion($0)?.description.contains("Init parameter") == true
         }
         #expect(parameterRequest != nil)
         #expect(parameterRequest?.isPartialLineDeletion == true)

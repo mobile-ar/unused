@@ -293,13 +293,11 @@ struct LineDeleterServiceTests {
     @Test func testFileDeletionResultProperties() {
         let result = LineDeletionResult(
             filePath: "/path/to/file.swift",
-            deletedLineCount: 5,
             success: true,
             error: nil
         )
 
         #expect(result.filePath == "/path/to/file.swift")
-        #expect(result.deletedLineCount == 5)
         #expect(result.success == true)
         #expect(result.error == nil)
     }
@@ -313,16 +311,10 @@ struct LineDeleterServiceTests {
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
         // Delete "unused: Int, " (columns 19-32, 1-indexed)
-        let result = service.deletePartialLine(
-            from: tempFile,
-            line: 1,
-            startColumn: 19,
-            endColumn: 32,
-            dryRun: false
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 19, endColumn: 32)]
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedPartialCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("init(name: String, age: Int)"))
@@ -337,16 +329,10 @@ struct LineDeleterServiceTests {
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
         // Delete ", unused: Int" (columns 18-31, 1-indexed)
-        let result = service.deletePartialLine(
-            from: tempFile,
-            line: 1,
-            startColumn: 18,
-            endColumn: 31,
-            dryRun: false
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 18, endColumn: 31)]
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedPartialCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("init(name: String)"))
@@ -361,16 +347,10 @@ struct LineDeleterServiceTests {
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
         // Delete "unused: Int, " (columns 6-19, 1-indexed)
-        let result = service.deletePartialLine(
-            from: tempFile,
-            line: 1,
-            startColumn: 6,
-            endColumn: 19,
-            dryRun: false
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 6, endColumn: 19)]
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedPartialCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("init(name: String)"))
@@ -397,7 +377,6 @@ struct LineDeleterServiceTests {
         let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: false)
 
         #expect(result.success == true)
-        #expect(result.deletedPartialCount == 2)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("init(a: Int, c: Int)"))
@@ -412,16 +391,10 @@ struct LineDeleterServiceTests {
         let tempFile = createTempFile(content: originalContent)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-        let result = service.deletePartialLine(
-            from: tempFile,
-            line: 1,
-            startColumn: 18,
-            endColumn: 31,
-            dryRun: true
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 18, endColumn: 31)]
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: true)
 
         #expect(result.success == true)
-        #expect(result.deletedPartialCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent == originalContent)
@@ -449,8 +422,6 @@ struct LineDeleterServiceTests {
         )
 
         #expect(result.success == true)
-        #expect(result.deletedLineCount == 1)
-        #expect(result.deletedPartialCount == 1)
 
         let newContent = try String(contentsOfFile: tempFile, encoding: .utf8)
         #expect(newContent.contains("init(name: String)"))
@@ -465,13 +436,8 @@ struct LineDeleterServiceTests {
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
         // Delete "a: Int," which would leave extra spaces
-        let result = service.deletePartialLine(
-            from: tempFile,
-            line: 1,
-            startColumn: 13,
-            endColumn: 21,
-            dryRun: false
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 13, endColumn: 21)]
+        let result = service.deletePartialLines(from: tempFile, partialDeletions: partials, dryRun: false)
 
         #expect(result.success == true)
 
@@ -481,16 +447,10 @@ struct LineDeleterServiceTests {
     }
 
     @Test func testDeletePartialLineFromNonExistentFile() {
-        let result = service.deletePartialLine(
-            from: "/nonexistent/path/file.swift",
-            line: 1,
-            startColumn: 1,
-            endColumn: 10,
-            dryRun: false
-        )
+        let partials = [PartialLineDeletion(line: 1, startColumn: 1, endColumn: 10)]
+        let result = service.deletePartialLines(from: "/nonexistent/path/file.swift", partialDeletions: partials, dryRun: false)
 
         #expect(result.success == false)
-        #expect(result.deletedPartialCount == 0)
         #expect(result.error != nil)
     }
 

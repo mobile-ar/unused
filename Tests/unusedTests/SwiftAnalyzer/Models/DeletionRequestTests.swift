@@ -210,7 +210,11 @@ struct DeletionRequestTests {
         let request = DeletionRequest.fromRelatedDeletion(related)
 
         #expect(request.isPartialLineDeletion == true)
-        #expect(request.isRelatedCode == true)
+        if case .relatedCode = request.mode {
+            // Expected - this is related code
+        } else {
+            Issue.record("Expected relatedCode mode")
+        }
         #expect(request.partialLineDeletion == partial)
         #expect(request.linesToDelete == nil)
     }
@@ -237,7 +241,11 @@ struct DeletionRequestTests {
         let request = DeletionRequest.fromRelatedDeletion(related)
 
         #expect(request.isPartialLineDeletion == false)
-        #expect(request.isRelatedCode == true)
+        if case .relatedCode = request.mode {
+            // Expected - this is related code
+        } else {
+            Issue.record("Expected relatedCode mode")
+        }
         #expect(request.partialLineDeletion == nil)
         #expect(request.linesToDelete == Set([5, 6]))
     }

@@ -60,11 +60,6 @@ struct LineDeleterService {
         return deleteLines(from: filePath, lineNumbers: allLinesToDelete, dryRun: dryRun)
     }
 
-    func deletePartialLine(from filePath: String, line: Int, startColumn: Int, endColumn: Int, dryRun: Bool = false) -> LineDeletionResult {
-        let partial = PartialLineDeletion(line: line, startColumn: startColumn, endColumn: endColumn)
-        return deletePartialLines(from: filePath, partialDeletions: [partial], dryRun: dryRun)
-    }
-
     func deletePartialLines(from filePath: String, partialDeletions: [PartialLineDeletion], dryRun: Bool = false) -> LineDeletionResult {
         do {
             let source = try String(contentsOfFile: filePath, encoding: .utf8)

@@ -21,8 +21,6 @@ struct InitParameterInfo {
     let startColumn: Int
     let endColumn: Int
     let hasTrailingComma: Bool
-    let isFirstParameter: Bool
-    let isLastParameter: Bool
     let deletionStartColumn: Int
     let deletionEndColumn: Int
 }
@@ -162,21 +160,21 @@ final class InitAssignmentVisitor: SyntaxVisitor {
 
             let lineRange = getLineRange(for: parameter)
             let startColumn = getStartColumn(for: parameter)
-            
+
             let hasTrailingComma = parameter.trailingComma != nil
             let isFirst = index == 0
             let isLast = index == parameterCount - 1
-            
+
             let endColumn: Int
             if hasTrailingComma {
                 endColumn = getStartColumn(for: parameter.trailingComma!)
             } else {
                 endColumn = getEndColumn(for: parameter)
             }
-            
+
             var deletionStart = startColumn
             var deletionEnd: Int
-            
+
             if hasTrailingComma {
                 deletionEnd = getEndColumn(for: parameter.trailingComma!)
                 if let nextTrivia = parameter.trailingComma?.trailingTrivia {
@@ -191,7 +189,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
             } else {
                 deletionEnd = endColumn
             }
-            
+
             currentInitParameters[paramName] = lineRange
             currentInitParameterSources[paramName] = parameter.trimmedDescription
             currentInitParameterColumns[paramName] = (start: startColumn, end: endColumn)
@@ -220,8 +218,6 @@ final class InitAssignmentVisitor: SyntaxVisitor {
                 startColumn: columns.start,
                 endColumn: columns.end,
                 hasTrailingComma: commaInfo.hasTrailing,
-                isFirstParameter: commaInfo.isFirst,
-                isLastParameter: commaInfo.isLast,
                 deletionStartColumn: deletionRange.start,
                 deletionEndColumn: deletionRange.end
             )

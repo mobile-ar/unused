@@ -13,7 +13,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -39,7 +39,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(userName: String) {
                 self.name = userName
             }
@@ -64,7 +64,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct Report {
             let generatedAt: Date
-            
+
             init() {
                 self.generatedAt = Date()
             }
@@ -90,11 +90,11 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
-            
+
             init() {
                 self.name = "Default"
             }
@@ -118,7 +118,7 @@ struct InitAssignmentVisitorTests {
         struct User {
             let name: String
             let age: Int
-            
+
             init(name: String, age: Int) {
                 self.name = name
                 self.age = age
@@ -143,7 +143,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -168,7 +168,7 @@ struct InitAssignmentVisitorTests {
         struct User {
             let name: String
             let displayName: String
-            
+
             init(name: String) {
                 self.name = name
                 self.displayName = name.uppercased()
@@ -193,7 +193,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         class ViewModel {
             let title: String
-            
+
             init(title: String) {
                 self.title = title
             }
@@ -218,7 +218,7 @@ struct InitAssignmentVisitorTests {
         struct User {
             let name: String
         }
-        
+
         extension User {
             init(fullName: String) {
                 self.name = fullName
@@ -243,15 +243,15 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
         }
-        
+
         struct Admin {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -274,7 +274,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct Config {
             let value: Int
-            
+
             init(with value: Int) {
                 self.value = value
             }
@@ -298,7 +298,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -321,7 +321,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -345,7 +345,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct Config {
             let timeout: TimeInterval
-            
+
             init(timeoutSeconds: Int) {
                 self.timeout = TimeInterval(timeoutSeconds)
             }
@@ -369,7 +369,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         actor DataStore {
             let identifier: String
-            
+
             init(identifier: String) {
                 self.identifier = identifier
             }
@@ -394,9 +394,9 @@ struct InitAssignmentVisitorTests {
         enum Result {
             case success(String)
             case failure(Error)
-            
+
             var message: String = ""
-            
+
             init(message: String) {
                 self = .success(message)
                 self.message = message
@@ -420,7 +420,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct User {
             let name: String
-            
+
             init(name: String) {
                 self.name = name
             }
@@ -447,7 +447,7 @@ struct InitAssignmentVisitorTests {
         struct User {
             let name: String
             let age: Int
-            
+
             init(name: String, age: Int) {
                 self.name = name
                 self.age = age
@@ -466,8 +466,6 @@ struct InitAssignmentVisitorTests {
 
         let nameParam = visitor.initParameters["name"]
         #expect(nameParam != nil)
-        #expect(nameParam?.isFirstParameter == true)
-        #expect(nameParam?.isLastParameter == false)
         #expect(nameParam?.hasTrailingComma == true)
         // Deletion should include the trailing comma
         #expect(nameParam?.deletionEndColumn ?? 0 > nameParam?.endColumn ?? 0)
@@ -478,7 +476,7 @@ struct InitAssignmentVisitorTests {
         struct User {
             let name: String
             let age: Int
-            
+
             init(name: String, age: Int) {
                 self.name = name
                 self.age = age
@@ -497,8 +495,6 @@ struct InitAssignmentVisitorTests {
 
         let ageParam = visitor.initParameters["age"]
         #expect(ageParam != nil)
-        #expect(ageParam?.isFirstParameter == false)
-        #expect(ageParam?.isLastParameter == true)
         #expect(ageParam?.hasTrailingComma == false)
         // Deletion should include the preceding comma
         #expect(ageParam?.deletionStartColumn ?? 0 < ageParam?.startColumn ?? 0)
@@ -510,7 +506,7 @@ struct InitAssignmentVisitorTests {
             let a: Int
             let b: Int
             let c: Int
-            
+
             init(a: Int, b: Int, c: Int) {
                 self.a = a
                 self.b = b
@@ -530,8 +526,6 @@ struct InitAssignmentVisitorTests {
 
         let bParam = visitor.initParameters["b"]
         #expect(bParam != nil)
-        #expect(bParam?.isFirstParameter == false)
-        #expect(bParam?.isLastParameter == false)
         #expect(bParam?.hasTrailingComma == true)
         // Middle parameter with trailing comma - deletion includes comma
         #expect(bParam?.deletionEndColumn ?? 0 > bParam?.endColumn ?? 0)
@@ -541,7 +535,7 @@ struct InitAssignmentVisitorTests {
         let source = """
         struct Simple {
             let value: Int
-            
+
             init(value: Int) {
                 self.value = value
             }
@@ -559,8 +553,6 @@ struct InitAssignmentVisitorTests {
 
         let valueParam = visitor.initParameters["value"]
         #expect(valueParam != nil)
-        #expect(valueParam?.isFirstParameter == true)
-        #expect(valueParam?.isLastParameter == true)
         #expect(valueParam?.hasTrailingComma == false)
         // Single parameter - deletion range matches parameter range
         #expect(valueParam?.deletionStartColumn == valueParam?.startColumn)

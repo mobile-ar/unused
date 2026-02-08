@@ -45,11 +45,6 @@ struct DeletionRequest: Equatable, Hashable {
         return false
     }
 
-    var isRelatedCode: Bool {
-        if case .relatedCode = mode { return true }
-        return false
-    }
-
     var isPartialLineDeletion: Bool {
         switch mode {
         case .partialLine:
@@ -59,11 +54,6 @@ struct DeletionRequest: Equatable, Hashable {
         default:
             return false
         }
-    }
-
-    var relatedDeletion: RelatedDeletion? {
-        if case .relatedCode(let related) = mode { return related }
-        return nil
     }
 
     var partialLineDeletion: PartialLineDeletion? {
