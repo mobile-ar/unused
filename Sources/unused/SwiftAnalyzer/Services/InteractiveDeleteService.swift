@@ -48,11 +48,8 @@ struct InteractiveDeleteService {
         for (index, item) in items.enumerated() {
             if deleteAllRemaining {
                 confirmedRequests.append(DeletionRequest(item: item, mode: .fullDeclaration))
-
-                let relatedDeletions = try await relatedCodeFinder.findRelatedCode(for: item)
-                for related in relatedDeletions {
-                    confirmedRequests.append(DeletionRequest.fromRelatedDeletion(related))
-                }
+                let relatedRequests = try await processRelatedDeletions(for: item)
+                confirmedRequests.append(contentsOf: relatedRequests)
                 continue
             }
 
@@ -64,11 +61,7 @@ struct InteractiveDeleteService {
 
                 let relatedDeletions = try await relatedCodeFinder.findRelatedCode(for: item)
                 if !relatedDeletions.isEmpty {
-                    let relatedRequests = try promptForRelatedDeletions(
-                        relatedDeletions,
-                        for: item,
-                        deleteAll: &deleteAllRelated
-                    )
+                    let relatedRequests = try promptRelatedDeletions(relatedDeletions, for: item, deleteAll: &deleteAllRelated)
                     confirmedRequests.append(contentsOf: relatedRequests)
                 }
             case .no:
@@ -77,11 +70,8 @@ struct InteractiveDeleteService {
                 deleteAllRemaining = true
                 deleteAllRelated = true
                 confirmedRequests.append(DeletionRequest(item: item, mode: .fullDeclaration))
-
-                let relatedDeletions = try await relatedCodeFinder.findRelatedCode(for: item)
-                for related in relatedDeletions {
-                    confirmedRequests.append(DeletionRequest.fromRelatedDeletion(related))
-                }
+                let relatedRequests = try await processRelatedDeletions(for: item)
+                confirmedRequests.append(contentsOf: relatedRequests)
             case .quit:
                 return confirmedRequests
             case .lineRange(let lines):
@@ -94,11 +84,12 @@ struct InteractiveDeleteService {
         return confirmedRequests
     }
 
-    private func promptForRelatedDeletions(
-        _ relatedDeletions: [RelatedDeletion],
-        for item: ReportItem,
-        deleteAll: inout Bool
-    ) throws -> [DeletionRequest] {
+    private func processRelatedDeletions(for item: ReportItem) async throws -> [DeletionRequest] {
+        let relatedDeletions = try await relatedCodeFinder.findRelatedCode(for: item)
+        return relatedDeletions.map { DeletionRequest.fromRelatedDeletion($0) }
+    }
+
+    private func promptRelatedDeletions(_ relatedDeletions: [RelatedDeletion], for item: ReportItem, deleteAll: inout Bool) throws -> [DeletionRequest] {
         var requests: [DeletionRequest] = []
 
         print("\n" + "─".repeated(60).mauve)
@@ -136,19 +127,11 @@ struct InteractiveDeleteService {
             print("File: ".subtext0 + "\(related.filePath):\(related.lineRange.lowerBound)".sky)
             print("")
 
-            displayRelatedCodeSnippet(related)
+            displayCodeSnippet(sourceText: related.sourceSnippet, startLine: related.lineRange.lowerBound, endLine: related.lineRange.upperBound)
 
-            print("\n" + "Options:".subtext0)
-            print("  [y]es".green + " - Delete this related code")
-            print("  [n]o".yellow + " - Skip this related code")
-            print("  [a]ll".peach + " - Delete all remaining related code")
-            print("  [q]uit".red + " - Skip all remaining related code")
-            print("  [x]code".sky + " - Open in Xcode")
-            print("  [z]ed".sky + " - Open in Zed")
-            print("\nYour choice: ".lavender, terminator: "")
-            fflush(stdout)
+            printOptions(for: "related code", displayingLineRange: false)
 
-            let response = parseRelatedResponse(inputProvider.readLine())
+            let response = parseCommonResponse(inputProvider.readLine())
 
             switch response {
             case .yes:
@@ -164,18 +147,10 @@ struct InteractiveDeleteService {
                 print("Skipping all remaining related code.".yellow)
                 return .quit
             case .openXcode:
-                print("Opening in Xcode...".sky)
-                try? editorOpener.open(filePath: related.filePath, lineNumber: related.lineRange.lowerBound, editor: .xcode)
-                print("Press Enter to continue...".overlay0, terminator: "")
-                fflush(stdout)
-                _ = inputProvider.readLine()
+                handleEditorOpening(filePath: related.filePath, lineNumber: related.lineRange.lowerBound, editor: .xcode)
                 continue
             case .openZed:
-                print("Opening in Zed...".sky)
-                try? editorOpener.open(filePath: related.filePath, lineNumber: related.lineRange.lowerBound, editor: .zed)
-                print("Press Enter to continue...".overlay0, terminator: "")
-                fflush(stdout)
-                _ = inputProvider.readLine()
+                handleEditorOpening(filePath: related.filePath, lineNumber: related.lineRange.lowerBound, editor: .zed)
                 continue
             default:
                 continue
@@ -183,16 +158,25 @@ struct InteractiveDeleteService {
         }
     }
 
-    private func displayRelatedCodeSnippet(_ related: RelatedDeletion) {
-        let lines = related.sourceSnippet.split(separator: "\n", omittingEmptySubsequences: false)
-        let lineNumberWidth = max(String(related.lineRange.upperBound).count, 3)
+    private func displayCodeSnippet(sourceText: String, startLine: Int, endLine: Int) {
+        let lines = sourceText.split(separator: "\n", omittingEmptySubsequences: false)
+        let lineNumberWidth = max(String(endLine).count, 3)
 
         for (offset, line) in lines.enumerated() {
-            let lineNumber = related.lineRange.lowerBound + offset
+            let lineNumber = startLine + offset
             let lineNumberStr = String(format: "%\(lineNumberWidth)d", lineNumber)
             let lineContent = " \(lineNumberStr) │ \(line)"
             print(lineContent.red.bold)
         }
+    }
+
+    private func handleEditorOpening(filePath: String, lineNumber: Int, editor: Editor) {
+        let editorName = editor == .xcode ? "Xcode" : "Zed"
+        print("Opening in \(editorName)...".sky)
+        try? editorOpener.open(filePath: filePath, lineNumber: lineNumber, editor: editor)
+        print("Press Enter to continue...".overlay0, terminator: "")
+        fflush(stdout)
+        _ = inputProvider.readLine()
     }
 
     private func promptForItem(item: ReportItem, index: Int, total: Int) throws -> InteractiveResponse {
@@ -209,18 +193,10 @@ struct InteractiveDeleteService {
                 return .no
             }
 
-            displayCodeWithLineNumbers(extractedCode)
+            print("")
+            displayCodeSnippet(sourceText: extractedCode.sourceText, startLine: extractedCode.startLine, endLine: extractedCode.endLine)
 
-            print("\n" + "Options:".subtext0)
-            print("  [y]es".green + " - Delete this declaration")
-            print("  [n]o".yellow + " - Skip this declaration")
-            print("  [a]ll".peach + " - Delete all remaining declarations")
-            print("  [q]uit".red + " - Skip all remaining declarations")
-            print("  [x]code".sky + " - Open in Xcode")
-            print("  [z]ed".sky + " - Open in Zed")
-            print("  " + "[line range]".mauve + " - Delete specific lines (e.g., '2-5 7 9-11')")
-            print("\nYour choice: ".lavender, terminator: "")
-            fflush(stdout)
+            printOptions(for: "declaration/s", displayingLineRange: true)
 
             let response = parseResponse(inputProvider.readLine(), validLineRange: extractedCode.startLine...extractedCode.endLine)
 
@@ -238,18 +214,10 @@ struct InteractiveDeleteService {
                 print("Skipping all remaining declarations.".yellow)
                 return .quit
             case .openXcode:
-                print("Opening in Xcode...".sky)
-                try? editorOpener.open(filePath: item.file, lineNumber: item.line, editor: .xcode)
-                print("Press Enter to continue...".overlay0, terminator: "")
-                fflush(stdout)
-                _ = inputProvider.readLine()
+                handleEditorOpening(filePath: item.file, lineNumber: item.line, editor: .xcode)
                 continue
             case .openZed:
-                print("Opening in Zed...".sky)
-                try? editorOpener.open(filePath: item.file, lineNumber: item.line, editor: .zed)
-                print("Press Enter to continue...".overlay0, terminator: "")
-                fflush(stdout)
-                _ = inputProvider.readLine()
+                handleEditorOpening(filePath: item.file, lineNumber: item.line, editor: .zed)
                 continue
             case .lineRange(let lines):
                 let validLines = lines.filter { (extractedCode.startLine...extractedCode.endLine).contains($0) }
@@ -264,22 +232,22 @@ struct InteractiveDeleteService {
         }
     }
 
-    private func displayCodeWithLineNumbers(_ code: ExtractedCode) {
-        let lines = code.sourceText.split(separator: "\n", omittingEmptySubsequences: false)
-        let lineNumberWidth = max(String(code.endLine).count, 3)
-
-        print("")
-        for (offset, line) in lines.enumerated() {
-            let lineNumber = code.startLine + offset
-            let lineNumberStr = String(format: "%\(lineNumberWidth)d", lineNumber)
-            let lineContent = " \(lineNumberStr) │ \(line)"
-            print(lineContent.red.bold)
-        }
-    }
-
     private func parseResponse(_ input: String?, validLineRange: ClosedRange<Int>) -> InteractiveResponse {
-        guard let input = input?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !input.isEmpty else {
+        let commonResponse = parseCommonResponse(input)
+        if commonResponse != .no || input?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            return commonResponse
+        }
+
+        if let trimmedInput = input?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let lines = try? LineRangeParser.parse(trimmedInput) {
+            return .lineRange(lines)
+        }
+
+        return .no
+    }
+
+    private func parseCommonResponse(_ input: String?) -> InteractiveResponse {
+        guard let input = input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty else {
             return .no
         }
 
@@ -299,36 +267,22 @@ struct InteractiveDeleteService {
         case "z", "zed":
             return .openZed
         default:
-            if let lines = try? LineRangeParser.parse(input) {
-                return .lineRange(lines)
-            }
             return .no
         }
     }
 
-    private func parseRelatedResponse(_ input: String?) -> InteractiveResponse {
-        guard let input = input?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !input.isEmpty else {
-            return .no
+    private func printOptions(for step: String, displayingLineRange: Bool) {
+        print("\n" + "Options:".subtext0)
+        print("  [y]es".green + " - Delete this \(step)")
+        print("  [n]o".yellow + " - Skip this \(step)")
+        print("  [a]ll".peach + " - Delete all remaining \(step)")
+        print("  [q]uit".red + " - Skip all remaining \(step)")
+        print("  [x]code".sky + " - Open in Xcode")
+        print("  [z]ed".sky + " - Open in Zed")
+        if displayingLineRange {
+            print("  " + "[line range]".mauve + " - Delete specific lines (e.g., '2-5 7 9-11')")
         }
-
-        let lowercased = input.lowercased()
-
-        switch lowercased {
-        case "y", "yes":
-            return .yes
-        case "n", "no":
-            return .no
-        case "a", "all":
-            return .all
-        case "q", "quit":
-            return .quit
-        case "x", "xcode":
-            return .openXcode
-        case "z", "zed":
-            return .openZed
-        default:
-            return .no
-        }
+        print("\nYour choice: ".lavender, terminator: "")
+        fflush(stdout)
     }
 }
