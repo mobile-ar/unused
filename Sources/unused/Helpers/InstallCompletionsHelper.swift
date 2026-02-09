@@ -80,9 +80,9 @@ struct InstallCompletionsHelper {
             throw InstallCompletionsError.shellDetectionFailed
         }
 
-        if shellPath.contains("zsh") {
+        if shellPath.contains(Shell.zsh.rawValue) {
             return .zsh
-        } else if shellPath.contains("fish") {
+        } else if shellPath.contains(Shell.fish.rawValue) {
             return .fish
         } else {
             return .bash
