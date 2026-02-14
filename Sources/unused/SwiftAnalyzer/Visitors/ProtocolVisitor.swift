@@ -29,19 +29,19 @@ class ProtocolVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
-        let protocolName = node.name.text
+        let protocolName = node.name.identifierName
         var methods = Set<String>()
 
         projectDefinedProtocols.insert(protocolName)
 
         for member in node.memberBlock.members {
             if let funcDecl = member.decl.as(FunctionDeclSyntax.self) {
-                methods.insert(funcDecl.name.text)
+                methods.insert(funcDecl.name.identifierName)
             }
             if let varDecl = member.decl.as(VariableDeclSyntax.self) {
                 for binding in varDecl.bindings {
                     if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
-                        methods.insert(identifier.identifier.text)
+                        methods.insert(identifier.identifier.identifierName)
                     }
                 }
             }
@@ -130,19 +130,17 @@ class ProtocolVisitor: SyntaxVisitor {
         var queue = Array(externalProtocolsToResolve)
 
         var progressIndex = 0
-        let initialTotal = queue.count
 
         while !queue.isEmpty {
             let protocolName = queue.removeFirst()
+            progressIndex += 1
+            let displayTotal = progressIndex + queue.count
+            printProgressBar(prefix: "Analyzing external protocols...", current: progressIndex, total: displayTotal)
 
             // Skip if already resolved
             if resolvedSet.contains(protocolName) || projectDefinedProtocols.contains(protocolName) {
                 continue
             }
-
-            progressIndex += 1
-            let displayTotal = max(initialTotal, progressIndex)
-            printProgressBar(prefix: "Analyzing external protocols...", current: progressIndex, total: displayTotal)
 
             if protocolRequirements[protocolName] != nil && protocolInheritance[protocolName] != nil {
                 resolvedSet.insert(protocolName)
@@ -183,7 +181,7 @@ class ProtocolVisitor: SyntaxVisitor {
             resolvedSet.insert(protocolName)
         }
 
-        if initialTotal > 0 {
+        if progressIndex > 0 {
             print("")
         }
     }

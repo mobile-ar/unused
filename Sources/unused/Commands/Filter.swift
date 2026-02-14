@@ -17,7 +17,7 @@ struct Filter: AsyncParsableCommand {
     @Option(name: .long, help: "Filter by specific item IDs (e.g., '1-3 5 7-9' or '1,2,3')")
     var ids: String?
 
-    @Option(name: .shortAndLong, parsing: .upToNextOption, help: "Filter by declaration type: function, variable, class")
+    @Option(name: .shortAndLong, parsing: .upToNextOption, help: "Filter by declaration type: function, variable, class, enum-case, protocol")
     var type: [String] = []
 
     @Option(name: .shortAndLong, help: "Filter by file path pattern (glob pattern, e.g., 'Sources/**/*.swift')")
@@ -82,6 +82,8 @@ struct Filter: AsyncParsableCommand {
         print("  Functions: \(summary.functions)".subtext0)
         print("  Variables: \(summary.variables)".subtext0)
         print("  Classes/Structs/Enums: \(summary.classes)".subtext0)
+        print("  Enum Cases: \(summary.enumCases)".subtext0)
+        print("  Protocols: \(summary.protocols)".subtext0)
         print("  Total: \(filteredItems.count)".green.bold)
 
         if delete || dryRun {
@@ -114,8 +116,12 @@ struct Filter: AsyncParsableCommand {
                 result.append(.variable)
             case "class", "classes", "struct", "structs", "enum", "enums":
                 result.append(.class)
+            case "enum-case", "enumcase", "case":
+                result.append(.enumCase)
+            case "protocol", "protocols":
+                result.append(.protocol)
             default:
-                throw ValidationError("Invalid type '\(typeString)'. Valid types: function, variable, class")
+                throw ValidationError("Invalid type '\(typeString)'. Valid types: function, variable, class, enum-case, protocol")
             }
         }
 
@@ -126,6 +132,8 @@ struct Filter: AsyncParsableCommand {
         let functions = items.filter { $0.type == .function }
         let variables = items.filter { $0.type == .variable }
         let classes = items.filter { $0.type == .class }
+        let enumCases = items.filter { $0.type == .enumCase }
+        let protocols = items.filter { $0.type == .protocol }
 
         let totalItems = items.count
         let idWidth = max(1, String(totalItems).count)
@@ -151,6 +159,23 @@ struct Filter: AsyncParsableCommand {
         if !classes.isEmpty {
             print("\nFiltered Classes/Structs/Enums:".pink.bold)
             for item in classes {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !enumCases.isEmpty {
+            print("\nFiltered Enum Cases:".teal.bold)
+            for item in enumCases {
+                let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !protocols.isEmpty {
+            print("\nFiltered Protocols:".sapphire.bold)
+            for item in protocols {
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
@@ -185,7 +210,7 @@ struct Filter: AsyncParsableCommand {
             } else {
                 print("\n\(requestsToDelete.count) declaration(s) confirmed for deletion.".teal)
             }
-            
+
         }
         if !yolo {
             print("\nWARNING: This will permanently delete \(items.count) declaration(s) from your source files.".red.bold)

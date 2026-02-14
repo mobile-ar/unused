@@ -31,7 +31,7 @@ class DeclarationVisitor: SyntaxVisitor {
             return .visitChildren
         }
 
-        let name = node.name.text
+        let name = node.name.identifierName
         var exclusionReason: ExclusionReason = .none
 
         // Check for override keyword
@@ -85,7 +85,7 @@ class DeclarationVisitor: SyntaxVisitor {
 
         for binding in node.bindings {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
-                let name = identifier.identifier.text
+                let name = identifier.identifier.identifierName
                 var exclusionReason: ExclusionReason = .none
                 var attributes: Set<String> = []
 
@@ -224,7 +224,7 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.name.text
+        let name = node.name.identifierName
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         // Check if this class is a property wrapper
@@ -251,7 +251,7 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.name.text
+        let name = node.name.identifierName
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         // Check if this struct is a property wrapper
@@ -278,7 +278,7 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.name.text
+        let name = node.name.identifierName
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         // Check if this enum is a property wrapper
@@ -305,7 +305,7 @@ class DeclarationVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.name.text
+        let name = node.name.identifierName
         pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
 
         let location = node.startLocation(converter: sourceLocationConverter)
@@ -326,7 +326,53 @@ class DeclarationVisitor: SyntaxVisitor {
         popTypeContext()
     }
 
+    override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+
+        guard let parentEnum = currentTypeName else {
+            return .visitChildren
+        }
+
+        // Skip CodingKeys enum cases — they are structural for Codable
+        if parentEnum == "CodingKeys" {
+            return .visitChildren
+        }
+
+        for element in node.elements {
+            let name = element.name.identifierName
+            let location = element.startLocation(converter: sourceLocationConverter)
+            let lineNumber = location.line
+
+            declarations.append(Declaration(
+                name: name,
+                type: .enumCase,
+                file: filePath,
+                line: lineNumber,
+                exclusionReason: .none,
+                parentType: parentEnum
+            ))
+        }
+
+        return .visitChildren
+    }
+
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        let name = node.name.identifierName
+
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+
+        declarations.append(Declaration(
+            name: name,
+            type: .protocol,
+            file: filePath,
+            line: lineNumber,
+            exclusionReason: .none,
+            parentType: nil
+        ))
+
         insideProtocol = true
         return .visitChildren
     }

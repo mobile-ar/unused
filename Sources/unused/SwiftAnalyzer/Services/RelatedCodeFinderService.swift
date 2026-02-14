@@ -16,6 +16,10 @@ struct RelatedCodeFinderService {
             return try findFunctionRelatedCode(item)
         case .class:
             return try await findTypeRelatedCode(item)
+        case .enumCase:
+            return []
+        case .protocol:
+            return []
         }
     }
 

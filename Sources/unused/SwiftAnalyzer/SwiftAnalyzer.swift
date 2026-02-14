@@ -75,6 +75,9 @@ class SwiftAnalyzer {
         }
         print("")
 
+        // Post-process: mark enum cases belonging to CaseIterable enums
+        markCaseIterableEnumCases()
+
         // Third pass: collect all usage
         let knownTypeNames = Set(declarations.filter { $0.type == .class }.map(\.name))
         for (index, file) in files.enumerated() {
@@ -202,6 +205,8 @@ class SwiftAnalyzer {
             return options.includeObjc
         case .writeOnly:
             return true // Write-only items are always included
+        case .caseIterable:
+            return false // CaseIterable enum cases are excluded by default
         case .none:
             return true
         }
@@ -229,6 +234,31 @@ class SwiftAnalyzer {
         return false
     }
 
+    private func markCaseIterableEnumCases() {
+        let caseIterableEnums = typeProtocolConformance
+            .filter { $0.value.contains("CaseIterable") }
+            .map(\.key)
+        let caseIterableSet = Set(caseIterableEnums)
+
+        guard !caseIterableSet.isEmpty else { return }
+
+        declarations = declarations.map { declaration in
+            guard declaration.type == .enumCase,
+                  let parentType = declaration.parentType,
+                  caseIterableSet.contains(parentType) else {
+                return declaration
+            }
+            return Declaration(
+                name: declaration.name,
+                type: declaration.type,
+                file: declaration.file,
+                line: declaration.line,
+                exclusionReason: .caseIterable,
+                parentType: declaration.parentType
+            )
+        }
+    }
+
     private func generateReport() -> Report {
         let unusedFunctions = declarations.filter {
             $0.type == .function &&
@@ -242,6 +272,16 @@ class SwiftAnalyzer {
         }
         let unusedClasses = declarations.filter {
             $0.type == .class &&
+            !isUsed($0) &&
+            shouldInclude($0)
+        }
+        let unusedEnumCases = declarations.filter {
+            $0.type == .enumCase &&
+            !isUsed($0) &&
+            shouldInclude($0)
+        }
+        let unusedProtocols = declarations.filter {
+            $0.type == .protocol &&
             !isUsed($0) &&
             shouldInclude($0)
         }
@@ -284,7 +324,7 @@ class SwiftAnalyzer {
 
         // Assign IDs to all items
         var currentId = 1
-        let unusedAll = unusedFunctions + unusedVariables + unusedClasses + writeOnlyVariables
+        let unusedAll = unusedFunctions + unusedVariables + unusedClasses + unusedEnumCases + unusedProtocols + writeOnlyVariables
 
         // Create report items for unused declarations
         var unusedItems: [ReportItem] = []

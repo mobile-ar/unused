@@ -282,6 +282,8 @@ struct FilterServiceTests {
         #expect(summary.functions == 3)
         #expect(summary.variables == 1)
         #expect(summary.classes == 1)
+        #expect(summary.enumCases == 0)
+        #expect(summary.protocols == 0)
     }
 
     @Test func testSummaryWithFilteredItems() async throws {
@@ -294,6 +296,8 @@ struct FilterServiceTests {
         #expect(summary.functions == 3)
         #expect(summary.variables == 0)
         #expect(summary.classes == 0)
+        #expect(summary.enumCases == 0)
+        #expect(summary.protocols == 0)
     }
 
     @Test func testFilterCriteriaIsEmpty() async throws {

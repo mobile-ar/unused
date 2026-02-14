@@ -54,7 +54,7 @@ actor ConsoleSpinner: ConsoleSpinnerProtocol {
 
     private func renderFrame() {
         let frame = frames[currentFrame]
-        print("\r\(frame.teal) \(message)", terminator: "")
+        print("\r\u{1B}[K\(frame.teal) \(message)", terminator: "")
         fflush(stdout)
         currentFrame = (currentFrame + 1) % frames.count
     }

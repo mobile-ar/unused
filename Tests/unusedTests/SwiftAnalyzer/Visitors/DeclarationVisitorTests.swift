@@ -70,7 +70,7 @@ struct DeclarationVisitorTests {
         enum OptionalValue<Value> {
             case none
             case some(Value)
-            
+
             var wrappedValue: Value? {
                 switch self {
                 case .none: return nil
@@ -102,11 +102,11 @@ struct DeclarationVisitorTests {
         struct Wrapper1<Value> {
             var wrappedValue: Value
         }
-        
+
         struct NotAWrapper {
             var value: Int
         }
-        
+
         @propertyWrapper
         struct Wrapper2<Value> {
             var wrappedValue: Value
@@ -136,11 +136,11 @@ struct DeclarationVisitorTests {
         struct RegularStruct {
             var value: Int
         }
-        
+
         class RegularClass {
             var name: String = ""
         }
-        
+
         enum RegularEnum {
             case one
             case two
@@ -1050,5 +1050,486 @@ struct DeclarationVisitorTests {
 
         let unrelated = visitor.declarations.first { $0.name == "unrelatedMethod" && $0.parentType == "MyType" }
         #expect(unrelated?.exclusionReason == ExclusionReason.none)
+    }
+
+    @Test
+    func testEnumCaseDeclarationCollection() async throws {
+        let source = """
+        enum Direction {
+            case north
+            case south
+            case east
+            case west
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 4)
+
+        let north = try #require(enumCases.first { $0.name == "north" })
+        #expect(north.parentType == "Direction")
+        #expect(north.exclusionReason == ExclusionReason.none)
+
+        let south = enumCases.first { $0.name == "south" }
+        #expect(south != nil)
+        #expect(south?.parentType == "Direction")
+    }
+
+    @Test
+    func testEnumCaseMultipleCasesOnOneLine() async throws {
+        let source = """
+        enum Color {
+            case red, green, blue
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 3)
+        #expect(enumCases.contains { $0.name == "red" })
+        #expect(enumCases.contains { $0.name == "green" })
+        #expect(enumCases.contains { $0.name == "blue" })
+        #expect(enumCases.allSatisfy { $0.parentType == "Color" })
+    }
+
+    @Test
+    func testEnumCaseWithAssociatedValues() async throws {
+        let source = """
+        enum Result {
+            case success(value: String)
+            case failure(error: Error)
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 2)
+        #expect(enumCases.contains { $0.name == "success" })
+        #expect(enumCases.contains { $0.name == "failure" })
+    }
+
+    @Test
+    func testEnumCaseWithRawValues() async throws {
+        let source = """
+        enum Status: String {
+            case active = "active"
+            case inactive = "inactive"
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 2)
+        #expect(enumCases.contains { $0.name == "active" })
+        #expect(enumCases.contains { $0.name == "inactive" })
+        #expect(enumCases.allSatisfy { $0.parentType == "Status" })
+    }
+
+    @Test
+    func testCodingKeysEnumCasesSkipped() async throws {
+        let source = """
+        struct User: Codable {
+            let name: String
+
+            enum CodingKeys: String, CodingKey {
+                case name
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.isEmpty)
+    }
+
+    @Test
+    func testCaseIterableEnumCasesNotExcludedAtVisitorLevel() async throws {
+        let source = """
+        enum Season: CaseIterable {
+            case spring
+            case summer
+            case autumn
+            case winter
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        // At the visitor level, CaseIterable is NOT applied as an exclusion reason.
+        // The post-processing step in SwiftAnalyzer handles this after all files are collected.
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 4)
+        #expect(enumCases.allSatisfy { $0.exclusionReason == ExclusionReason.none })
+
+        // But the conformance IS tracked for later post-processing
+        #expect(visitor.typeProtocolConformance["Season"]?.contains("CaseIterable") == true)
+    }
+
+    @Test
+    func testCaseIterableViaExtensionConformanceNotDetectedAtVisitorLevel() async throws {
+        let source = """
+        enum Planet {
+            case mercury
+            case venus
+        }
+
+        extension Planet: CaseIterable {}
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        // At the visitor level, CaseIterable via extension is NOT detected
+        // because the extension is visited after the enum cases.
+        // The post-processing step in SwiftAnalyzer handles this.
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 2)
+        #expect(enumCases.allSatisfy { $0.exclusionReason == ExclusionReason.none })
+
+        // But the conformance IS tracked for later post-processing
+        #expect(visitor.typeProtocolConformance["Planet"]?.contains("CaseIterable") == true)
+    }
+
+    @Test
+    func testNestedEnumCaseInsideClass() async throws {
+        let source = """
+        class ViewController {
+            enum State {
+                case loading
+                case loaded
+                case error
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 3)
+        #expect(enumCases.allSatisfy { $0.parentType == "State" })
+    }
+
+    @Test
+    func testEnumCaseInsideProtocolSkipped() async throws {
+        let source = """
+        protocol MyProtocol {
+            func doSomething()
+        }
+        enum Direction {
+            case up
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 1)
+        #expect(enumCases.first?.name == "up")
+        #expect(enumCases.first?.parentType == "Direction")
+    }
+
+    @Test
+    func testProtocolDeclarationCollection() async throws {
+        let source = """
+        protocol Drawable {
+            func draw()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let protocols = visitor.declarations.filter { $0.type == .protocol }
+        #expect(protocols.count == 1)
+        let drawable = try #require(protocols.first)
+        #expect(drawable.name == "Drawable")
+        #expect(drawable.parentType == nil)
+        #expect(drawable.exclusionReason == ExclusionReason.none)
+    }
+
+    @Test
+    func testMultipleProtocolDeclarations() async throws {
+        let source = """
+        protocol Drawable {
+            func draw()
+        }
+
+        protocol Resizable {
+            var size: CGSize { get set }
+        }
+
+        protocol Animatable {
+            func animate()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let protocols = visitor.declarations.filter { $0.type == .protocol }
+        #expect(protocols.count == 3)
+        #expect(protocols.contains { $0.name == "Drawable" })
+        #expect(protocols.contains { $0.name == "Resizable" })
+        #expect(protocols.contains { $0.name == "Animatable" })
+        #expect(protocols.allSatisfy { $0.parentType == nil })
+    }
+
+    @Test
+    func testProtocolMembersNotCollectedAsDeclarations() async throws {
+        let source = """
+        protocol DataProvider {
+            var count: Int { get }
+            func fetchData()
+            func reset()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let protocols = visitor.declarations.filter { $0.type == .protocol }
+        #expect(protocols.count == 1)
+        #expect(protocols.first?.name == "DataProvider")
+
+        let functions = visitor.declarations.filter { $0.type == .function }
+        #expect(functions.isEmpty)
+
+        let variables = visitor.declarations.filter { $0.type == .variable }
+        #expect(variables.isEmpty)
+    }
+
+    @Test
+    func testProtocolAndEnumCasesTogether() async throws {
+        let source = """
+        protocol Renderable {
+            func render()
+        }
+
+        enum Shape {
+            case circle
+            case square
+        }
+
+        class Canvas: Renderable {
+            func render() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let protocols = visitor.declarations.filter { $0.type == .protocol }
+        #expect(protocols.count == 1)
+        #expect(protocols.first?.name == "Renderable")
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 2)
+        #expect(enumCases.contains { $0.name == "circle" })
+        #expect(enumCases.contains { $0.name == "square" })
+
+        let classes = visitor.declarations.filter { $0.type == .class }
+        #expect(classes.count == 2)
+        #expect(classes.contains { $0.name == "Shape" })
+        #expect(classes.contains { $0.name == "Canvas" })
+    }
+
+    @Test
+    func testProtocolDeclarationLineNumber() async throws {
+        let source = """
+        import Foundation
+
+        protocol MyProtocol {
+            func doWork()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let protocols = visitor.declarations.filter { $0.type == .protocol }
+        #expect(protocols.count == 1)
+        #expect(protocols.first?.line == 3)
+    }
+
+    @Test
+    func testEnumCaseLineNumbers() async throws {
+        let source = """
+        enum Fruit {
+            case apple
+            case banana
+            case cherry
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let apple = visitor.declarations.first { $0.name == "apple" && $0.type == .enumCase }
+        #expect(apple?.line == 2)
+
+        let banana = visitor.declarations.first { $0.name == "banana" && $0.type == .enumCase }
+        #expect(banana?.line == 3)
+
+        let cherry = visitor.declarations.first { $0.name == "cherry" && $0.type == .enumCase }
+        #expect(cherry?.line == 4)
+    }
+
+    @Test
+    func testNonCaseIterableEnumCasesNotExcluded() async throws {
+        let source = """
+        enum Direction {
+            case up
+            case down
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let enumCases = visitor.declarations.filter { $0.type == .enumCase }
+        #expect(enumCases.count == 2)
+        #expect(enumCases.allSatisfy { $0.exclusionReason == ExclusionReason.none })
     }
 }

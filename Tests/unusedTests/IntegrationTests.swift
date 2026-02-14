@@ -191,6 +191,266 @@ struct IntegrationTests {
         #expect(secondEntry?.name == "anotherFunction")
     }
 
+    @Test func testUnusedEnumCasesDetection() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("Enums.swift")
+        let swiftContent = """
+        enum Direction {
+            case north
+            case south
+            case east
+            case west
+        }
+
+        func navigate() {
+            let dir = Direction.north
+            switch dir {
+            case .south:
+                print("south")
+            default:
+                break
+            }
+        }
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let unusedEnumCases = report.unused.filter { $0.type == .enumCase }
+
+        // "north" is used via Direction.north, "south" via .south in switch
+        // "east" and "west" are never referenced
+        #expect(unusedEnumCases.contains { $0.name == "east" })
+        #expect(unusedEnumCases.contains { $0.name == "west" })
+        #expect(!unusedEnumCases.contains { $0.name == "north" })
+        #expect(!unusedEnumCases.contains { $0.name == "south" })
+    }
+
+    @Test func testUnusedProtocolDeclarationDetection() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("Protocols.swift")
+        let swiftContent = """
+        protocol UsedProtocol {
+            func doWork()
+        }
+
+        protocol UnusedProtocol {
+            func doNothing()
+        }
+
+        class Worker: UsedProtocol {
+            func doWork() {
+                print("working")
+            }
+        }
+
+        let worker = Worker()
+        worker.doWork()
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let unusedProtocols = report.unused.filter { $0.type == .protocol }
+        #expect(unusedProtocols.contains { $0.name == "UnusedProtocol" })
+        #expect(!unusedProtocols.contains { $0.name == "UsedProtocol" })
+    }
+
+    @Test func testCaseIterableEnumCasesExcluded() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("CaseIterable.swift")
+        let swiftContent = """
+        enum Season: CaseIterable {
+            case spring
+            case summer
+            case autumn
+            case winter
+        }
+
+        let allSeasons = Season.allCases
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        // CaseIterable enum cases should be excluded (not in unused)
+        let unusedEnumCases = report.unused.filter { $0.type == .enumCase }
+        #expect(unusedEnumCases.isEmpty)
+    }
+
+    @Test func testCaseIterableViaExtensionExcluded() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("ExtCaseIterable.swift")
+        let swiftContent = """
+        enum Planet {
+            case mercury
+            case venus
+            case earth
+        }
+
+        extension Planet: CaseIterable {}
+
+        let allPlanets = Planet.allCases
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        // CaseIterable conformance via extension should also exclude enum cases
+        let unusedEnumCases = report.unused.filter { $0.type == .enumCase }
+        #expect(unusedEnumCases.isEmpty)
+    }
+
+    @Test func testProtocolUsedAsTypeAnnotationNotFlagged() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("ProtocolAsType.swift")
+        let swiftContent = """
+        protocol Service {
+            func execute()
+        }
+
+        func run(service: any Service) {
+            service.execute()
+        }
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let unusedProtocols = report.unused.filter { $0.type == .protocol }
+        #expect(!unusedProtocols.contains { $0.name == "Service" })
+    }
+
+    @Test func testCodingKeysEnumCasesNotFlagged() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("CodingKeys.swift")
+        let swiftContent = """
+        struct User: Codable {
+            let name: String
+            let age: Int
+
+            enum CodingKeys: String, CodingKey {
+                case name
+                case age
+            }
+        }
+
+        let user = User(name: "Alice", age: 30)
+        print(user.name)
+        print(user.age)
+        """
+
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        // CodingKeys cases should not be flagged as unused enum cases
+        let unusedEnumCases = report.unused.filter { $0.type == .enumCase }
+        #expect(!unusedEnumCases.contains { $0.name == "name" })
+        #expect(!unusedEnumCases.contains { $0.name == "age" })
+    }
+
     @Test func testLargeDataset() async throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)

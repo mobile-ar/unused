@@ -8,7 +8,7 @@ import SwiftParser
 @testable import unused
 
 struct UsageVisitorTests {
-    
+
     @Test
     func testInfixOperatorDetection() throws {
         let source = """
@@ -16,14 +16,14 @@ struct UsageVisitorTests {
             return a == b
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("=="))
     }
-    
+
     @Test
     func testMultipleInfixOperators() throws {
         let source = """
@@ -31,43 +31,43 @@ struct UsageVisitorTests {
             return a + b * c - 10
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("+"))
         #expect(visitor.usedIdentifiers.contains("*"))
         #expect(visitor.usedIdentifiers.contains("-"))
     }
-    
+
     @Test
     func testEquatableOperatorUsage() throws {
         let source = """
         struct Summary {
             let count: Int
         }
-        
+
         extension Summary: Equatable {
             static func == (lhs: Summary, rhs: Summary) -> Bool {
                 return lhs.count == rhs.count
             }
         }
-        
+
         func test() {
             let s1 = Summary(count: 5)
             let s2 = Summary(count: 5)
             let result = s1 == s2
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("=="))
     }
-    
+
     @Test
     func testPrefixOperatorDetection() throws {
         let source = """
@@ -75,37 +75,37 @@ struct UsageVisitorTests {
             return !value
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("!"))
     }
-    
+
     @Test
     func testPostfixOperatorDetection() throws {
         let source = """
         postfix operator ++
-        
+
         postfix func ++ (value: inout Int) -> Int {
             value += 1
             return value
         }
-        
+
         func increment() {
             var x = 5
             x++
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("++"))
     }
-    
+
     @Test
     func testComparisonOperators() throws {
         let source = """
@@ -118,11 +118,11 @@ struct UsageVisitorTests {
             let gte = a >= b
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("=="))
         #expect(visitor.usedIdentifiers.contains("!="))
         #expect(visitor.usedIdentifiers.contains("<"))
@@ -130,7 +130,7 @@ struct UsageVisitorTests {
         #expect(visitor.usedIdentifiers.contains(">"))
         #expect(visitor.usedIdentifiers.contains(">="))
     }
-    
+
     @Test
     func testLogicalOperators() throws {
         let source = """
@@ -138,115 +138,115 @@ struct UsageVisitorTests {
             return a && b || !a
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("&&"))
         #expect(visitor.usedIdentifiers.contains("||"))
         #expect(visitor.usedIdentifiers.contains("!"))
     }
-    
+
     @Test
     func testCustomOperator() throws {
         let source = """
         infix operator **: MultiplicationPrecedence
-        
+
         func ** (lhs: Double, rhs: Double) -> Double {
             return pow(lhs, rhs)
         }
-        
+
         func calculate() {
             let result = 2.0 ** 3.0
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("**"))
     }
-    
+
     @Test
     func testRetroactiveEquatableConformance() throws {
         let source = """
         struct Summary {
             let count: Int
         }
-        
+
         extension Summary: @retroactive Equatable {
             public static func == (lhs: Summary, rhs: Summary) -> Bool {
                 return lhs.count == rhs.count
             }
         }
-        
+
         struct SummaryCategory {
             let type: String
         }
-        
+
         extension SummaryCategory: @retroactive Equatable {
             public static func == (lhs: SummaryCategory, rhs: SummaryCategory) -> Bool {
                 return lhs.type == rhs.type
             }
         }
-        
+
         func test() {
             let s1 = Summary(count: 1)
             let s2 = Summary(count: 1)
             let c1 = SummaryCategory(type: "A")
             let c2 = SummaryCategory(type: "A")
-            
+
             if s1 == s2 && c1 == c2 {
                 print("Equal")
             }
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("=="))
     }
-    
+
     @Test
     func testFunctionReferences() throws {
         let source = """
         func myFunction() {
             print("Hello")
         }
-        
+
         func caller() {
             myFunction()
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("myFunction"))
     }
-    
+
     @Test
     func testMemberAccess() throws {
         let source = """
         struct User {
             let name: String
         }
-        
+
         func test() {
             let user = User(name: "John")
             print(user.name)
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("name"))
     }
 
@@ -256,16 +256,16 @@ struct UsageVisitorTests {
         enum Shell: String {
             case bash, zsh, fish
         }
-        
+
         struct Command {
             var shell: Shell = .bash
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("Shell"))
         #expect(visitor.usedIdentifiers.contains("String"))
     }
@@ -276,16 +276,16 @@ struct UsageVisitorTests {
         enum Color {
             case red, green, blue
         }
-        
+
         func setColor(_ color: Color) {
             print(color)
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("Color"))
     }
 
@@ -295,16 +295,16 @@ struct UsageVisitorTests {
         enum Status {
             case active, inactive
         }
-        
+
         func getStatus() -> Status {
             return .active
         }
         """
-        
+
         let sourceFile = Parser.parse(source: source)
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
-        
+
         #expect(visitor.usedIdentifiers.contains("Status"))
     }
 
@@ -834,5 +834,229 @@ struct UsageVisitorTests {
 
         #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Calculator", memberName: "add")))
         #expect(!visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Calculator", memberName: "multiply")))
+    }
+
+    @Test
+    func testEnumCaseUsageViaSwitchPattern() throws {
+        let source = """
+        enum Direction {
+            case north, south, east, west
+        }
+        func navigate(dir: Direction) {
+            switch dir {
+            case .north:
+                print("Going north")
+            case .south:
+                print("Going south")
+            default:
+                break
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor(knownTypeNames: ["Direction"])
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("north"))
+        #expect(visitor.usedIdentifiers.contains("south"))
+        #expect(visitor.unqualifiedMemberUsages.contains("north"))
+        #expect(visitor.unqualifiedMemberUsages.contains("south"))
+        #expect(!visitor.usedIdentifiers.contains("east"))
+        #expect(!visitor.usedIdentifiers.contains("west"))
+    }
+
+    @Test
+    func testEnumCaseUsageViaQualifiedAccess() throws {
+        let source = """
+        enum Color {
+            case red, green, blue
+        }
+        func test() {
+            let c = Color.red
+            _ = Color.green
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor(knownTypeNames: ["Color"])
+        visitor.walk(sourceFile)
+
+        #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Color", memberName: "red")))
+        #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Color", memberName: "green")))
+        #expect(!visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Color", memberName: "blue")))
+    }
+
+    @Test
+    func testEnumCaseUsageViaIfCase() throws {
+        let source = """
+        enum Result {
+            case success(String)
+            case failure(Error)
+        }
+        func check(result: Result) {
+            if case .success(let value) = result {
+                print(value)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor(knownTypeNames: ["Result"])
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("success"))
+        #expect(!visitor.usedIdentifiers.contains("failure"))
+    }
+
+    @Test
+    func testEnumCaseUsageViaGuardCase() throws {
+        let source = """
+        enum State {
+            case active
+            case inactive
+        }
+        func process(state: State) {
+            guard case .active = state else { return }
+            print("Active")
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor(knownTypeNames: ["State"])
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("active"))
+        #expect(!visitor.usedIdentifiers.contains("inactive"))
+    }
+
+    @Test
+    func testEnumCaseImplicitMemberUsage() throws {
+        let source = """
+        enum Priority {
+            case low, medium, high
+        }
+        func setPriority() {
+            let p: Priority = .high
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor(knownTypeNames: ["Priority"])
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("high"))
+        #expect(visitor.unqualifiedMemberUsages.contains("high"))
+        #expect(!visitor.usedIdentifiers.contains("low"))
+        #expect(!visitor.usedIdentifiers.contains("medium"))
+    }
+
+    @Test
+    func testProtocolUsageViaInheritance() throws {
+        let source = """
+        protocol Drawable {
+            func draw()
+        }
+        class Circle: Drawable {
+            func draw() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("Drawable"))
+    }
+
+    @Test
+    func testProtocolUsageViaTypeAnnotation() throws {
+        let source = """
+        protocol Loggable {
+            func log()
+        }
+        func process(logger: Loggable) {
+            logger.log()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("Loggable"))
+    }
+
+    @Test
+    func testProtocolUsageViaExistentialAny() throws {
+        let source = """
+        protocol Service {
+            func execute()
+        }
+        func run(service: any Service) {
+            service.execute()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("Service"))
+    }
+
+    @Test
+    func testProtocolUsageViaSomeOpaque() throws {
+        let source = """
+        protocol Shape {
+            func area() -> Double
+        }
+        func makeShape() -> some Shape {
+            fatalError()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("Shape"))
+    }
+
+    @Test
+    func testProtocolUsageViaProtocolInheritance() throws {
+        let source = """
+        protocol Base {
+            func base()
+        }
+        protocol Child: Base {
+            func child()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(visitor.usedIdentifiers.contains("Base"))
+    }
+
+    @Test
+    func testUnusedProtocolNotTracked() throws {
+        let source = """
+        protocol Unused {
+            func doNothing()
+        }
+        func test() {
+            print("hello")
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = UsageVisitor()
+        visitor.walk(sourceFile)
+
+        #expect(!visitor.bareIdentifierUsages.contains("Unused"))
+        #expect(!visitor.unqualifiedMemberUsages.contains("Unused"))
     }
 }

@@ -24,7 +24,7 @@ class UsageVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.baseName.text
+        let name = node.baseName.identifierName
         usedIdentifiers.insert(name)
         bareIdentifierUsages.insert(name)
         return .visitChildren
@@ -32,7 +32,7 @@ class UsageVisitor: SyntaxVisitor {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         if let identExpr = node.calledExpression.as(DeclReferenceExprSyntax.self) {
-            let name = identExpr.baseName.text
+            let name = identExpr.baseName.identifierName
             usedIdentifiers.insert(name)
             bareIdentifierUsages.insert(name)
         }
@@ -40,11 +40,11 @@ class UsageVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-        let memberName = node.declName.baseName.text
+        let memberName = node.declName.baseName.identifierName
         usedIdentifiers.insert(memberName)
 
         if let baseRef = extractBaseIdentifier(from: node.base) {
-            let baseName = baseRef.baseName.text
+            let baseName = baseRef.baseName.identifierName
             if baseName == "self" || baseName == "Self" {
                 if let currentType = currentTypeName {
                     qualifiedMemberUsages.insert(QualifiedUsage(typeName: currentType, memberName: memberName))
@@ -103,7 +103,7 @@ class UsageVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
-        usedIdentifiers.insert(node.name.text)
+        usedIdentifiers.insert(node.name.identifierName)
         return .visitChildren
     }
 
@@ -133,14 +133,14 @@ class UsageVisitor: SyntaxVisitor {
 
     override func visit(_ node: TypeExprSyntax) -> SyntaxVisitorContinueKind {
         if let identType = node.type.as(IdentifierTypeSyntax.self) {
-            usedIdentifiers.insert(identType.name.text)
+            usedIdentifiers.insert(identType.name.identifierName)
         }
         return .visitChildren
     }
 
     override func visit(_ node: InheritedTypeSyntax) -> SyntaxVisitorContinueKind {
         if let identType = node.type.as(IdentifierTypeSyntax.self) {
-            usedIdentifiers.insert(identType.name.text)
+            usedIdentifiers.insert(identType.name.identifierName)
         }
         return .visitChildren
     }

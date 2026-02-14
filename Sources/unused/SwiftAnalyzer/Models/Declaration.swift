@@ -6,6 +6,8 @@ enum DeclarationType: String, Codable {
     case function
     case variable
     case `class`
+    case enumCase
+    case `protocol`
 }
 
 enum ExclusionReason: String, Codable {
@@ -15,6 +17,7 @@ enum ExclusionReason: String, Codable {
     case ibAction
     case ibOutlet
     case writeOnly
+    case caseIterable
     case none
 
     var description: String {
@@ -25,6 +28,7 @@ enum ExclusionReason: String, Codable {
         case .ibAction: return "@IBAction"
         case .ibOutlet: return "@IBOutlet"
         case .writeOnly: return "write-only"
+        case .caseIterable: return "CaseIterable"
         case .none: return ""
         }
     }

@@ -54,6 +54,8 @@ struct ReportService {
         let unusedVariableItems = unusedItems.filter { $0.type == .variable && $0.exclusionReason != .writeOnly }
         let writeOnlyItems = unusedItems.filter { $0.exclusionReason == .writeOnly }
         let unusedClassItems = unusedItems.filter { $0.type == .class }
+        let unusedEnumCaseItems = unusedItems.filter { $0.type == .enumCase }
+        let unusedProtocolItems = unusedItems.filter { $0.type == .protocol }
 
         if !unusedFunctionItems.isEmpty {
             print("\nUnused Functions:".peach.bold)
@@ -76,6 +78,23 @@ struct ReportService {
         if !unusedClassItems.isEmpty {
             print("\nUnused Classes:".pink.bold)
             for item in unusedClassItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !unusedEnumCaseItems.isEmpty {
+            print("\nUnused Enum Cases:".teal.bold)
+            for item in unusedEnumCaseItems {
+                let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !unusedProtocolItems.isEmpty {
+            print("\nUnused Protocols:".sapphire.bold)
+            for item in unusedProtocolItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }

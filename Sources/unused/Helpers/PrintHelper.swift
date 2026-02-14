@@ -14,8 +14,6 @@ func printProgressBar(prefix: String, current: Int, total: Int) {
     let emptyBar = String(repeating: "░", count: emptyLength).lavender
     let percentage = String(format: "%.1f", progress * 100)
 
-    print("\r \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
-    if current == total {
-        fflush(stdout)
-    }
+    print("\r\u{1B}[K \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
+    fflush(stdout)
 }

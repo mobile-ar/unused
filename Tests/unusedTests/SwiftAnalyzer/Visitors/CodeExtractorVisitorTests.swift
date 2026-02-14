@@ -273,6 +273,130 @@ struct CodeExtractorVisitorTests {
         #expect(lines[2].contains("func myFunction()"))
     }
 
+    @Test func testExtractEnumCase() throws {
+        let source = """
+        enum Direction {
+            case north
+            case south
+            case east
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "south", line: 3, type: .enumCase)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.sourceText.contains("case south") == true)
+    }
+
+    @Test func testExtractEnumCaseFromMultipleCasesOnOneLine() throws {
+        let source = """
+        enum Color {
+            case red, green, blue
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "red", line: 2, type: .enumCase)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.sourceText.contains("case red, green, blue") == true)
+    }
+
+    @Test func testExtractEnumCaseWithAssociatedValue() throws {
+        let source = """
+        enum Result {
+            case success(value: String)
+            case failure(error: Error)
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "success", line: 2, type: .enumCase)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.sourceText.contains("case success(value: String)") == true)
+    }
+
+    @Test func testExtractEnumCaseNonExistent() throws {
+        let source = """
+        enum Direction {
+            case north
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "south", line: 2, type: .enumCase)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
+    @Test func testExtractProtocol() throws {
+        let source = """
+        protocol Drawable {
+            func draw()
+            var color: String { get }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "Drawable", line: 1, type: .protocol)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 1)
+        #expect(extracted?.endLine == 4)
+        #expect(extracted?.sourceText.contains("protocol Drawable") == true)
+        #expect(extracted?.sourceText.contains("func draw()") == true)
+        #expect(extracted?.sourceText.contains("var color: String") == true)
+    }
+
+    @Test func testExtractProtocolNonExistent() throws {
+        let source = """
+        protocol Drawable {
+            func draw()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "NonExistent", line: 1, type: .protocol)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
+    @Test func testExtractProtocolWrongLine() throws {
+        let source = """
+        protocol First {
+            func first()
+        }
+        protocol Second {
+            func second()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "First", line: 4, type: .protocol)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
     @Test func testExtractWithMultipleEmptyLines() throws {
         let source = """
         class Container {

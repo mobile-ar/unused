@@ -84,7 +84,7 @@ final class CodeExtractorVisitor: SyntaxVisitor {
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         let lineNumber = getLineNumber(for: node)
-        extractIfMatches(name: node.name.text, line: lineNumber, type: .function, node: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .function, node: node)
         return extractedCode == nil ? .visitChildren : .skipChildren
     }
 
@@ -92,7 +92,7 @@ final class CodeExtractorVisitor: SyntaxVisitor {
         let lineNumber = getLineNumber(for: node)
         for binding in node.bindings {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
-                extractIfMatches(name: identifier.identifier.text, line: lineNumber, type: .variable, node: node)
+                extractIfMatches(name: identifier.identifier.identifierName, line: lineNumber, type: .variable, node: node)
                 if extractedCode != nil {
                     return .skipChildren
                 }
@@ -103,19 +103,36 @@ final class CodeExtractorVisitor: SyntaxVisitor {
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         let lineNumber = getLineNumber(for: node)
-        extractIfMatches(name: node.name.text, line: lineNumber, type: .class, node: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .class, node: node)
         return extractedCode == nil ? .visitChildren : .skipChildren
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         let lineNumber = getLineNumber(for: node)
-        extractIfMatches(name: node.name.text, line: lineNumber, type: .class, node: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .class, node: node)
         return extractedCode == nil ? .visitChildren : .skipChildren
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let lineNumber = getLineNumber(for: node)
-        extractIfMatches(name: node.name.text, line: lineNumber, type: .class, node: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .class, node: node)
+        return extractedCode == nil ? .visitChildren : .skipChildren
+    }
+
+    override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
+        for element in node.elements {
+            let lineNumber = getLineNumber(for: element)
+            extractIfMatches(name: element.name.identifierName, line: lineNumber, type: .enumCase, node: node)
+            if extractedCode != nil {
+                return .skipChildren
+            }
+        }
+        return .visitChildren
+    }
+
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        let lineNumber = getLineNumber(for: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .protocol, node: node)
         return extractedCode == nil ? .visitChildren : .skipChildren
     }
 
