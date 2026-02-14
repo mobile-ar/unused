@@ -9,6 +9,9 @@ import SwiftParser
 class SwiftAnalyzer {
     private var declarations: [Declaration] = []
     private var usedIdentifiers = Set<String>()
+    private var qualifiedMemberUsages = Set<QualifiedUsage>()
+    private var unqualifiedMemberUsages = Set<String>()
+    private var bareIdentifierUsages = Set<String>()
     private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
     private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
     private var typePropertyDeclarations: [String: [PropertyInfo]] = [:] // type name -> property info
@@ -36,8 +39,21 @@ class SwiftAnalyzer {
         }
         print("")
 
+        // Scan dependency source files for protocol definitions (third-party packages)
+        let dependencyFiles = getDependencyProtocolFiles(in: directory)
+        if !dependencyFiles.isEmpty {
+            for (index, file) in dependencyFiles.enumerated() {
+                printProgressBar(prefix: "Scanning dependency protocols...", current: index + 1, total: dependencyFiles.count)
+                collectProtocols(at: file, using: protocolVisitor)
+            }
+            print("")
+        }
+
         // Resolve external protocols via SwiftInterface
         await protocolVisitor.resolveExternalProtocols()
+
+        // Propagate inherited protocol requirements transitively
+        protocolVisitor.resolveInheritedRequirements()
 
         // Collect property wrappers from imported modules
         // Include SwiftUICore because many SwiftUI property wrappers (State, Binding, etc.) are defined there
@@ -60,9 +76,10 @@ class SwiftAnalyzer {
         print("")
 
         // Third pass: collect all usage
+        let knownTypeNames = Set(declarations.filter { $0.type == .class }.map(\.name))
         for (index, file) in files.enumerated() {
             printProgressBar(prefix: "Collecting usage...", current: index + 1, total: totalFiles)
-            collectUsage(at: file)
+            collectUsage(at: file, knownTypeNames: knownTypeNames)
         }
         print("")
 
@@ -132,15 +149,18 @@ class SwiftAnalyzer {
         return (url: url, source: source, sourceFile: sourceFile)
     }
 
-    private func collectUsage(at url: URL) {
+    private func collectUsage(at url: URL, knownTypeNames: Set<String>) {
         guard let source = try? String(contentsOf: url, encoding: .utf8) else {
             return
         }
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = UsageVisitor()
+        let visitor = UsageVisitor(knownTypeNames: knownTypeNames)
         visitor.walk(sourceFile)
         usedIdentifiers.formUnion(visitor.usedIdentifiers)
+        qualifiedMemberUsages.formUnion(visitor.qualifiedMemberUsages)
+        unqualifiedMemberUsages.formUnion(visitor.unqualifiedMemberUsages)
+        bareIdentifierUsages.formUnion(visitor.bareIdentifierUsages)
     }
 
     private func collectWriteOnlyInfo(at url: URL, source: String, sourceFile: SourceFileSyntax) -> (reads: Set<PropertyInfo>, writes: Set<PropertyInfo>) {
@@ -187,27 +207,49 @@ class SwiftAnalyzer {
         }
     }
 
+    private func isUsed(_ declaration: Declaration) -> Bool {
+        let name = declaration.name
+
+        guard let parentType = declaration.parentType else {
+            return usedIdentifiers.contains(name)
+        }
+
+        if qualifiedMemberUsages.contains(QualifiedUsage(typeName: parentType, memberName: name)) {
+            return true
+        }
+
+        if bareIdentifierUsages.contains(name) {
+            return true
+        }
+
+        if unqualifiedMemberUsages.contains(name) {
+            return true
+        }
+
+        return false
+    }
+
     private func generateReport() -> Report {
         let unusedFunctions = declarations.filter {
             $0.type == .function &&
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             shouldInclude($0)
         }
         let unusedVariables = declarations.filter {
             $0.type == .variable &&
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             shouldInclude($0)
         }
         let unusedClasses = declarations.filter {
             $0.type == .class &&
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             shouldInclude($0)
         }
 
         // Detect write-only variables (assigned but never read)
         let writeOnlyVariables = declarations.filter {
             $0.type == .variable &&
-            usedIdentifiers.contains($0.name) &&
+            isUsed($0) &&
             isWriteOnlyProperty($0)
         }.map { declaration in
             Declaration(
@@ -223,18 +265,17 @@ class SwiftAnalyzer {
         // Get excluded items (items that would be unused but are excluded by options)
         let excludedOverrides = declarations.filter {
             $0.type == .function &&
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             $0.exclusionReason == .override &&
             !options.includeOverrides
         }
         let excludedProtocols = declarations.filter {
-            $0.type == .function &&
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             $0.exclusionReason == .protocolImplementation &&
             !options.includeProtocols
         }
         let excludedObjc = declarations.filter {
-            !usedIdentifiers.contains($0.name) &&
+            !isUsed($0) &&
             ($0.exclusionReason == .objcAttribute ||
              $0.exclusionReason == .ibAction ||
              $0.exclusionReason == .ibOutlet) &&
@@ -285,6 +326,40 @@ class SwiftAnalyzer {
             options: ReportOptions(from: options),
             testFilesExcluded: testFileCount
         )
+    }
+
+    private func getDependencyProtocolFiles(in directory: String) -> [URL] {
+        let directoryURL = URL(fileURLWithPath: directory)
+        let checkoutsURL = directoryURL.appendingPathComponent(".build/checkouts")
+        let fileManager = FileManager.default
+
+        guard fileManager.fileExists(atPath: checkoutsURL.path) else {
+            return []
+        }
+
+        var protocolFiles: [URL] = []
+        guard let enumerator = fileManager.enumerator(at: checkoutsURL, includingPropertiesForKeys: nil) else {
+            return []
+        }
+
+        while let element = enumerator.nextObject() as? URL {
+            guard element.pathExtension == "swift"
+                && !element.pathComponents.contains("Tests")
+                && !element.pathComponents.contains("Benchmarks")
+                && !element.pathComponents.contains("Examples") else {
+                continue
+            }
+
+            // Only parse files that actually contain protocol definitions
+            guard let contents = try? String(contentsOf: element, encoding: .utf8),
+                  contents.contains("protocol ") else {
+                continue
+            }
+
+            protocolFiles.append(element)
+        }
+
+        return protocolFiles
     }
 
     private func countExcludedTestFiles() -> Int {

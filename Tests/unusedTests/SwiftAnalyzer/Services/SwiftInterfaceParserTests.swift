@@ -247,4 +247,160 @@ struct SwiftInterfaceParserTests {
         // If we get here without crashing, the test passes
     }
 
+    @Test
+    func testParseProtocolParentsWithSingleParent() {
+        let moduleInterface = """
+        public protocol ChildProtocol : ParentProtocol {
+            func childMethod()
+        }
+
+        public protocol ParentProtocol {
+            func parentMethod()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "ChildProtocol", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("ParentProtocol") == true)
+        #expect(parents?.count == 1)
+    }
+
+    @Test
+    func testParseProtocolParentsWithMultipleParents() {
+        let moduleInterface = """
+        public protocol Combined : ProtocolA, ProtocolB {
+            func combinedMethod()
+        }
+
+        public protocol ProtocolA {
+            func methodA()
+        }
+
+        public protocol ProtocolB {
+            func methodB()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "Combined", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("ProtocolA") == true)
+        #expect(parents?.contains("ProtocolB") == true)
+        #expect(parents?.count == 2)
+    }
+
+    @Test
+    func testParseProtocolParentsWithNoParent() {
+        let moduleInterface = """
+        public protocol StandaloneProtocol {
+            func doSomething()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "StandaloneProtocol", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.isEmpty == true)
+    }
+
+    @Test
+    func testParseProtocolParentsWithModulePrefix() {
+        let moduleInterface = """
+        public protocol AsyncParsableCommand : ArgumentParser.ParsableCommand {
+            mutating func run() async throws
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "AsyncParsableCommand", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("ParsableCommand") == true)
+        #expect(parents?.count == 1)
+    }
+
+    @Test
+    func testParseProtocolParentsProtocolNotFound() {
+        let moduleInterface = """
+        public protocol SomeOtherProtocol {
+            func doSomething()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "NonExistentProtocol", from: moduleInterface)
+
+        #expect(parents == nil)
+    }
+
+    @Test
+    func testParseProtocolParentsWithAvailableAttribute() {
+        let moduleInterface = """
+        @available(macOS 10.15, iOS 13, *)
+        public protocol AsyncCommand : BaseCommand {
+            func execute() async throws
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "AsyncCommand", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("BaseCommand") == true)
+    }
+
+    @Test
+    func testParseProtocolParentsWithGenericConstraint() {
+        let moduleInterface = """
+        public protocol TypedProtocol<Element> : BaseProtocol {
+            associatedtype Element
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "TypedProtocol", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("BaseProtocol") == true)
+    }
+
+    @Test
+    func testGetProtocolParentsFromSwiftModule() {
+        let parser = SwiftInterfaceParser()!
+        // Hashable inherits from Equatable in the Swift standard library
+        let parents = parser.getProtocolParents(protocolName: "Hashable", inModule: "Swift")
+
+        #expect(parents != nil)
+        #expect(parents?.contains("Equatable") == true)
+    }
+
+    @Test
+    func testGetProtocolParentsFromNonExistentModule() {
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.getProtocolParents(protocolName: "SomeProtocol", inModule: "NonExistentModule")
+
+        #expect(parents == nil)
+    }
+
+    @Test
+    func testParseProtocolParentsWithMultipleModulePrefixedParents() {
+        let moduleInterface = """
+        public protocol MyProtocol : Swift.Equatable, Swift.Hashable {
+            func myMethod()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let parents = parser.parseProtocolParents(protocolName: "MyProtocol", from: moduleInterface)
+
+        #expect(parents != nil)
+        #expect(parents?.contains("Equatable") == true)
+        #expect(parents?.contains("Hashable") == true)
+        #expect(parents?.count == 2)
+    }
+
 }

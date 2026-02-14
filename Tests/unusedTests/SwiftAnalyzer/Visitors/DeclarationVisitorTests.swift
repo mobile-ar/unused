@@ -870,4 +870,185 @@ struct DeclarationVisitorTests {
         #expect(count?.exclusionReason == ExclusionReason.none)
         #expect(capacity?.exclusionReason == ExclusionReason.none)
     }
+
+    @Test
+    func testVariableFromInheritedProtocolMarkedAsProtocolImplementation() async throws {
+        let source = """
+        protocol GrandparentProtocol {
+            var configuration: String { get }
+        }
+
+        protocol ParentProtocol: GrandparentProtocol {
+            func run()
+        }
+
+        struct MyCommand: ParentProtocol {
+            var configuration: String { "test" }
+            func run() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+        protocolVisitor.resolveInheritedRequirements()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let configuration = visitor.declarations.first { $0.name == "configuration" && $0.parentType == "MyCommand" }
+        #expect(configuration != nil)
+        #expect(configuration?.exclusionReason == .protocolImplementation)
+
+        let run = visitor.declarations.first { $0.name == "run" && $0.parentType == "MyCommand" }
+        #expect(run != nil)
+        #expect(run?.exclusionReason == .protocolImplementation)
+    }
+
+    @Test
+    func testFunctionFromMultiLevelInheritedProtocolMarkedAsProtocolImplementation() async throws {
+        let source = """
+        protocol Root {
+            var id: String { get }
+        }
+
+        protocol Middle: Root {
+            func process()
+        }
+
+        protocol Leaf: Middle {
+            func execute()
+        }
+
+        struct Worker: Leaf {
+            var id: String { "worker" }
+            func process() {}
+            func execute() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+        protocolVisitor.resolveInheritedRequirements()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let id = visitor.declarations.first { $0.name == "id" && $0.parentType == "Worker" }
+        #expect(id?.exclusionReason == .protocolImplementation)
+
+        let process = visitor.declarations.first { $0.name == "process" && $0.parentType == "Worker" }
+        #expect(process?.exclusionReason == .protocolImplementation)
+
+        let execute = visitor.declarations.first { $0.name == "execute" && $0.parentType == "Worker" }
+        #expect(execute?.exclusionReason == .protocolImplementation)
+    }
+
+    @Test
+    func testInheritedProtocolRequirementsNotMarkedWithoutResolution() async throws {
+        let source = """
+        protocol Base {
+            var configuration: String { get }
+        }
+
+        protocol Child: Base {
+            func run()
+        }
+
+        struct MyStruct: Child {
+            var configuration: String { "test" }
+            func run() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+        // Intentionally NOT calling resolveInheritedRequirements()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        // Without transitive resolution, configuration from Base is NOT recognized
+        // via the Child conformance (only direct Child requirements are checked)
+        let configuration = visitor.declarations.first { $0.name == "configuration" && $0.parentType == "MyStruct" }
+        #expect(configuration?.exclusionReason == ExclusionReason.none)
+
+        // run is a direct requirement of Child, so it IS recognized
+        let run = visitor.declarations.first { $0.name == "run" && $0.parentType == "MyStruct" }
+        #expect(run?.exclusionReason == .protocolImplementation)
+    }
+
+    @Test
+    func testDiamondProtocolInheritanceInDeclarationVisitor() async throws {
+        let source = """
+        protocol Root {
+            var id: String { get }
+        }
+
+        protocol BranchA: Root {
+            func methodA()
+        }
+
+        protocol BranchB: Root {
+            func methodB()
+        }
+
+        protocol Leaf: BranchA, BranchB {
+            func leafMethod()
+        }
+
+        struct MyType: Leaf {
+            var id: String { "1" }
+            func methodA() {}
+            func methodB() {}
+            func leafMethod() {}
+            func unrelatedMethod() {}
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        protocolVisitor.walk(sourceFile)
+        await protocolVisitor.resolveExternalProtocols()
+        protocolVisitor.resolveInheritedRequirements()
+
+        let visitor = DeclarationVisitor(
+            filePath: "/test/file.swift",
+            protocolRequirements: protocolVisitor.protocolRequirements,
+            sourceFile: sourceFile
+        )
+        visitor.walk(sourceFile)
+
+        let id = visitor.declarations.first { $0.name == "id" && $0.parentType == "MyType" }
+        #expect(id?.exclusionReason == .protocolImplementation)
+
+        let methodA = visitor.declarations.first { $0.name == "methodA" && $0.parentType == "MyType" }
+        #expect(methodA?.exclusionReason == .protocolImplementation)
+
+        let methodB = visitor.declarations.first { $0.name == "methodB" && $0.parentType == "MyType" }
+        #expect(methodB?.exclusionReason == .protocolImplementation)
+
+        let leafMethod = visitor.declarations.first { $0.name == "leafMethod" && $0.parentType == "MyType" }
+        #expect(leafMethod?.exclusionReason == .protocolImplementation)
+
+        let unrelated = visitor.declarations.first { $0.name == "unrelatedMethod" && $0.parentType == "MyType" }
+        #expect(unrelated?.exclusionReason == ExclusionReason.none)
+    }
 }

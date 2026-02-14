@@ -157,6 +157,66 @@ final class SwiftInterfaceParser: Sendable {
         return propertyWrappers
     }
 
+    /// Parse parent protocol names from a protocol declaration in a module interface
+    /// - Parameters:
+    ///   - protocolName: The name of the protocol to find
+    ///   - moduleInterface: The module interface text
+    /// - Returns: A set of parent protocol names, or nil if the protocol wasn't found
+    func parseProtocolParents(protocolName: String, from moduleInterface: String) -> Set<String>? {
+        guard let declarationLine = findProtocolDeclarationLine(named: protocolName, in: moduleInterface) else {
+            return nil
+        }
+
+        var parents = Set<String>()
+
+        // Find the colon after the protocol name that starts the inheritance clause
+        // Format: "protocol Name : Parent1, Parent2 {" or "protocol Name<T> : Parent1 {"
+        guard let colonIndex = declarationLine.firstIndex(of: ":") else {
+            return parents
+        }
+
+        let afterColon = declarationLine[declarationLine.index(after: colonIndex)...]
+
+        // Find the opening brace or end of line
+        let inheritanceText: Substring
+        if let braceIndex = afterColon.firstIndex(of: "{") {
+            inheritanceText = afterColon[..<braceIndex]
+        } else {
+            inheritanceText = afterColon
+        }
+
+        // Split by commas and extract protocol names
+        let components = inheritanceText.split(separator: ",")
+        for component in components {
+            let trimmed = component.trimmingCharacters(in: .whitespaces)
+            // Remove module prefix (e.g., "ArgumentParser.ParsableCommand" -> "ParsableCommand")
+            let name: String
+            if let dotIndex = trimmed.lastIndex(of: ".") {
+                name = String(trimmed[trimmed.index(after: dotIndex)...])
+            } else {
+                name = trimmed
+            }
+            // Filter out empty strings and "where" clauses
+            if !name.isEmpty && !name.hasPrefix("where") && !name.contains(" ") {
+                parents.insert(name)
+            }
+        }
+
+        return parents
+    }
+
+    /// Get parent protocols of a protocol from a specific module
+    /// - Parameters:
+    ///   - protocolName: The name of the protocol
+    ///   - moduleName: The module containing the protocol
+    /// - Returns: A set of parent protocol names, or nil if unavailable
+    func getProtocolParents(protocolName: String, inModule moduleName: String) -> Set<String>? {
+        guard let interface = getModuleInterface(moduleName: moduleName) else {
+            return nil
+        }
+        return parseProtocolParents(protocolName: protocolName, from: interface)
+    }
+
     /// Get protocol requirements directly by querying the module
     /// - Parameters:
     ///   - protocolName: The name of the protocol
@@ -263,11 +323,8 @@ final class SwiftInterfaceParser: Sendable {
         return nil
     }
 
-    /// Find the body of a protocol definition in the source
-    private func findProtocolBody(named protocolName: String, in source: String) -> Range<String.Index>? {
-        // Look for "protocol ProtocolName" possibly with access modifiers
-        // Need to match the protocol name followed by whitespace, colon, or opening brace
-        // to avoid matching protocols that start with the same name (e.g., "Equatable" vs "EquatableBy...")
+    /// Find the start index of a protocol declaration in the source
+    private func findProtocolStart(named protocolName: String, in source: String) -> String.Index? {
         let patterns = [
             "public protocol \(protocolName)(?:\\s|:|\\{|<)",
             "protocol \(protocolName)(?:\\s|:|\\{|<)",
@@ -275,18 +332,42 @@ final class SwiftInterfaceParser: Sendable {
             "@available[^)]*\\)\\s*protocol \(protocolName)(?:\\s|:|\\{|<)"
         ]
 
-        var protocolStart: String.Index?
-
         for pattern in patterns {
             if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
                let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
                let range = Range(match.range, in: source) {
-                protocolStart = range.lowerBound
-                break
+                return range.lowerBound
             }
         }
 
-        guard let start = protocolStart else {
+        return nil
+    }
+
+    /// Find the declaration line of a protocol (everything from "protocol" to the opening brace)
+    private func findProtocolDeclarationLine(named protocolName: String, in source: String) -> String? {
+        guard let start = findProtocolStart(named: protocolName, in: source) else {
+            return nil
+        }
+
+        // Find "protocol" keyword within the matched range
+        guard let protocolKeywordRange = source[start...].range(of: "protocol") else {
+            return nil
+        }
+
+        // Find the opening brace
+        guard let braceIndex = source[protocolKeywordRange.lowerBound...].firstIndex(of: "{") else {
+            return nil
+        }
+
+        return String(source[protocolKeywordRange.lowerBound..<braceIndex])
+    }
+
+    /// Find the body of a protocol definition in the source
+    private func findProtocolBody(named protocolName: String, in source: String) -> Range<String.Index>? {
+        // Look for "protocol ProtocolName" possibly with access modifiers
+        // Need to match the protocol name followed by whitespace, colon, or opening brace
+        // to avoid matching protocols that start with the same name (e.g., "Equatable" vs "EquatableBy...")
+        guard let start = findProtocolStart(named: protocolName, in: source) else {
             return nil
         }
 

@@ -7,6 +7,7 @@ import SwiftSyntax
 class ProtocolVisitor: SyntaxVisitor {
 
     var protocolRequirements: [String: Set<String>] = [:]
+    var protocolInheritance: [String: Set<String>] = [:]
     private var projectDefinedProtocols: Set<String> = []
     private var externalProtocolsToResolve: Set<String> = []
     private(set) var importedModules: Set<String> = []
@@ -53,6 +54,20 @@ class ProtocolVisitor: SyntaxVisitor {
         }
 
         protocolRequirements[protocolName] = methods
+
+        // Track protocol inheritance from the inheritance clause
+        let parents = extractProtocolParents(from: node.inheritanceClause)
+        if !parents.isEmpty {
+            protocolInheritance[protocolName] = parents
+
+            // Mark unknown parent protocols for external resolution
+            for parent in parents {
+                if !projectDefinedProtocols.contains(parent) && protocolRequirements[parent] == nil {
+                    externalProtocolsToResolve.insert(parent)
+                }
+            }
+        }
+
         return .visitChildren
     }
 
@@ -110,29 +125,124 @@ class ProtocolVisitor: SyntaxVisitor {
         // Always include Swift standard library as a fallback
         let modulesToTry = importedModules.union(["Swift"])
 
-        let total = externalProtocolsToResolve.count
-        for (index, protocolName) in externalProtocolsToResolve.enumerated() {
-            // Skip if already resolved (e.g., by another file)
-            printProgressBar(prefix: "Analyzing external protocols...", current: index + 1, total: total)
-            if protocolRequirements[protocolName] != nil {
+        // Use a queue-based approach to discover and resolve parent protocols recursively
+        var resolvedSet = Set<String>()
+        var queue = Array(externalProtocolsToResolve)
+
+        var progressIndex = 0
+        let initialTotal = queue.count
+
+        while !queue.isEmpty {
+            let protocolName = queue.removeFirst()
+
+            // Skip if already resolved
+            if resolvedSet.contains(protocolName) || projectDefinedProtocols.contains(protocolName) {
                 continue
             }
+
+            progressIndex += 1
+            let displayTotal = max(initialTotal, progressIndex)
+            printProgressBar(prefix: "Analyzing external protocols...", current: progressIndex, total: displayTotal)
+
+            if protocolRequirements[protocolName] != nil && protocolInheritance[protocolName] != nil {
+                resolvedSet.insert(protocolName)
+                continue
+            }
+
             // Try each imported module to find the protocol via SwiftInterfaceClient
-            var foundRequirements: Set<String>? = nil
+            var foundRequirements: Set<String>?
+            var foundParents: Set<String>?
+
             if let swiftInterfaceClient {
                 for moduleName in modulesToTry {
                     if let requirements = await swiftInterfaceClient.getProtocolRequirements(protocolName: protocolName, inModule: moduleName) {
                         foundRequirements = requirements
+                        foundParents = await swiftInterfaceClient.getProtocolParents(protocolName: protocolName, inModule: moduleName)
                         break
                     }
                 }
             }
 
             // Set the requirements (empty set if not found or SourceKit unavailable)
-            // This marks the protocol as "seen" and prevents false positives
-            protocolRequirements[protocolName] = foundRequirements ?? Set()
+            if protocolRequirements[protocolName] == nil {
+                protocolRequirements[protocolName] = foundRequirements ?? Set()
+            }
+
+            // Store parent protocol relationships
+            if let parents = foundParents, !parents.isEmpty {
+                protocolInheritance[protocolName] = parents
+
+                // Queue any undiscovered parent protocols for resolution
+                for parent in parents {
+                    if !resolvedSet.contains(parent) && !projectDefinedProtocols.contains(parent) && protocolRequirements[parent] == nil {
+                        queue.append(parent)
+                    }
+                }
+            }
+
+            resolvedSet.insert(protocolName)
         }
-        print("")
+
+        if initialTotal > 0 {
+            print("")
+        }
+    }
+
+    /// Resolve inherited requirements by propagating parent protocol requirements transitively.
+    /// After calling this, each protocol's requirements include all requirements from ancestor protocols.
+    func resolveInheritedRequirements() {
+        // Build the full set of ancestors for each protocol (transitive closure)
+        // Then merge all ancestor requirements into each protocol's requirements
+        var changed = true
+        while changed {
+            changed = false
+            for (protocolName, parents) in protocolInheritance {
+                var currentRequirements = protocolRequirements[protocolName] ?? Set()
+                let originalCount = currentRequirements.count
+
+                for parent in parents {
+                    if let parentRequirements = protocolRequirements[parent] {
+                        currentRequirements.formUnion(parentRequirements)
+                    }
+                }
+
+                if currentRequirements.count != originalCount {
+                    protocolRequirements[protocolName] = currentRequirements
+                    changed = true
+                }
+            }
+
+            // Also propagate inheritance transitively:
+            // If A inherits B, and B inherits C, then A should also list C's requirements.
+            // We handle this by propagating the inheritance map itself.
+            for (protocolName, parents) in protocolInheritance {
+                var expandedParents = parents
+                let originalParentCount = expandedParents.count
+
+                for parent in parents {
+                    if let grandparents = protocolInheritance[parent] {
+                        expandedParents.formUnion(grandparents)
+                    }
+                }
+
+                if expandedParents.count != originalParentCount {
+                    protocolInheritance[protocolName] = expandedParents
+                    changed = true
+                }
+            }
+        }
+    }
+
+    private func extractProtocolParents(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
+        guard let clause = inheritanceClause else { return [] }
+
+        var parents = Set<String>()
+        for inherited in clause.inheritedTypes {
+            if let typeName = inherited.type.as(IdentifierTypeSyntax.self)?.name.text {
+                parents.insert(typeName)
+            }
+        }
+        return parents
     }
 
 }

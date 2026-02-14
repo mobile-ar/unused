@@ -389,4 +389,226 @@ struct ProtocolVisitorTests {
 
         #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
     }
+
+    @Test
+    func testProjectProtocolInheritanceTracking() async throws {
+        let source = """
+        protocol ParentProtocol {
+            func parentMethod()
+            var parentProperty: String { get }
+        }
+
+        protocol ChildProtocol: ParentProtocol {
+            func childMethod()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+
+        #expect(visitor.protocolInheritance["ChildProtocol"]?.contains("ParentProtocol") == true)
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        // Before resolving inherited requirements, ChildProtocol only has its own direct requirements
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") != true)
+    }
+
+    @Test
+    func testResolveInheritedRequirementsPropagatesParentRequirements() async throws {
+        let source = """
+        protocol ParentProtocol {
+            func parentMethod()
+            var parentProperty: String { get }
+        }
+
+        protocol ChildProtocol: ParentProtocol {
+            func childMethod()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        // After resolving, ChildProtocol should include ParentProtocol requirements
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentProperty") == true)
+
+        // ParentProtocol should still have its own requirements unchanged
+        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
+        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentProperty") == true)
+    }
+
+    @Test
+    func testMultiLevelProtocolInheritance() async throws {
+        let source = """
+        protocol GrandparentProtocol {
+            var configuration: String { get }
+        }
+
+        protocol ParentProtocol: GrandparentProtocol {
+            func parentMethod()
+        }
+
+        protocol ChildProtocol: ParentProtocol {
+            func childMethod()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        // ChildProtocol should have requirements from all ancestors
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
+        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("configuration") == true)
+
+        // ParentProtocol should have its own + GrandparentProtocol requirements
+        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
+        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("configuration") == true)
+    }
+
+    @Test
+    func testProtocolInheritanceFromMultipleParents() async throws {
+        let source = """
+        protocol ProtocolA {
+            func methodA()
+        }
+
+        protocol ProtocolB {
+            var propertyB: Int { get }
+        }
+
+        protocol ProtocolC: ProtocolA, ProtocolB {
+            func methodC()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        #expect(visitor.protocolInheritance["ProtocolC"]?.contains("ProtocolA") == true)
+        #expect(visitor.protocolInheritance["ProtocolC"]?.contains("ProtocolB") == true)
+        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("methodC") == true)
+        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("methodA") == true)
+        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("propertyB") == true)
+    }
+
+    @Test
+    func testProtocolInheritingFromExternalProtocol() async throws {
+        let source = """
+        protocol MyProtocol: Equatable {
+            func myMethod()
+        }
+
+        struct MyStruct: MyProtocol {
+            func myMethod() {}
+            static func == (lhs: MyStruct, rhs: MyStruct) -> Bool { true }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        // MyProtocol should inherit Equatable's requirements
+        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
+        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("==") == true)
+    }
+
+    @Test
+    func testResolveInheritedRequirementsWithNoInheritance() async throws {
+        let source = """
+        protocol StandaloneProtocol {
+            func doSomething()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        #expect(visitor.protocolRequirements["StandaloneProtocol"]?.contains("doSomething") == true)
+        #expect(visitor.protocolRequirements["StandaloneProtocol"]?.count == 1)
+        #expect(visitor.protocolInheritance["StandaloneProtocol"] == nil)
+    }
+
+    @Test
+    func testDiamondProtocolInheritance() async throws {
+        let source = """
+        protocol Root {
+            var id: String { get }
+        }
+
+        protocol BranchA: Root {
+            func methodA()
+        }
+
+        protocol BranchB: Root {
+            func methodB()
+        }
+
+        protocol Leaf: BranchA, BranchB {
+            func leafMethod()
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        // Leaf should have all requirements from the diamond
+        #expect(visitor.protocolRequirements["Leaf"]?.contains("leafMethod") == true)
+        #expect(visitor.protocolRequirements["Leaf"]?.contains("methodA") == true)
+        #expect(visitor.protocolRequirements["Leaf"]?.contains("methodB") == true)
+        #expect(visitor.protocolRequirements["Leaf"]?.contains("id") == true)
+
+        // Both branches should have Root's id
+        #expect(visitor.protocolRequirements["BranchA"]?.contains("id") == true)
+        #expect(visitor.protocolRequirements["BranchB"]?.contains("id") == true)
+    }
+
+    @Test
+    func testExternalProtocolInheritanceViaSwiftInterface() async throws {
+        // Hashable inherits from Equatable in the Swift standard library
+        let source = """
+        struct MyStruct: Hashable {
+            let value: Int
+
+            static func == (lhs: MyStruct, rhs: MyStruct) -> Bool {
+                return lhs.value == rhs.value
+            }
+
+            func hash(into hasher: inout Hasher) {
+                hasher.combine(value)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        visitor.walk(sourceFile)
+        await visitor.resolveExternalProtocols()
+        visitor.resolveInheritedRequirements()
+
+        // Hashable should include Equatable's requirements after resolution
+        #expect(visitor.protocolRequirements["Hashable"]?.contains("hash") == true)
+        #expect(visitor.protocolRequirements["Hashable"]?.contains("==") == true)
+    }
 }
