@@ -33,6 +33,13 @@ actor SwiftInterfaceClient: Sendable {
         return parser?.getPropertyWrappers(inModule: moduleName)
     }
 
+    /// Get all exported symbol names from a module
+    /// - Parameter moduleName: The name of the module to query
+    /// - Returns: A set of exported symbol names, or nil if the module is unavailable
+    func getExportedSymbols(inModule moduleName: String) -> Set<String>? {
+        return parser?.getExportedSymbols(inModule: moduleName)
+    }
+
     /// Get all property wrappers from multiple modules
     /// - Parameter moduleNames: The set of module names to query
     /// - Returns: A combined set of all property wrapper type names found

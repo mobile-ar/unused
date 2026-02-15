@@ -326,6 +326,26 @@ class DeclarationVisitor: SyntaxVisitor {
         popTypeContext()
     }
 
+    override func visit(_ node: TypeAliasDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !insideProtocol else {
+            return .visitChildren
+        }
+
+        let name = node.name.identifierName
+        let location = node.startLocation(converter: sourceLocationConverter)
+        let lineNumber = location.line
+
+        declarations.append(Declaration(
+            name: name,
+            type: .typealias,
+            file: filePath,
+            line: lineNumber,
+            exclusionReason: .none,
+            parentType: currentTypeName
+        ))
+        return .visitChildren
+    }
+
     override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
         guard !insideProtocol else {
             return .visitChildren

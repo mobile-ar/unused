@@ -56,6 +56,9 @@ struct ReportService {
         let unusedClassItems = unusedItems.filter { $0.type == .class }
         let unusedEnumCaseItems = unusedItems.filter { $0.type == .enumCase }
         let unusedProtocolItems = unusedItems.filter { $0.type == .protocol }
+        let unusedTypealiasItems = unusedItems.filter { $0.type == .typealias }
+        let unusedParameterItems = unusedItems.filter { $0.type == .parameter }
+        let unusedImportItems = unusedItems.filter { $0.type == .import }
 
         if !unusedFunctionItems.isEmpty {
             print("\nUnused Functions:".peach.bold)
@@ -95,6 +98,32 @@ struct ReportService {
         if !unusedProtocolItems.isEmpty {
             print("\nUnused Protocols:".sapphire.bold)
             for item in unusedProtocolItems {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !unusedTypealiasItems.isEmpty {
+            print("\nUnused Typealiases:".teal.bold)
+            for item in unusedTypealiasItems {
+                let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !unusedParameterItems.isEmpty {
+            print("\nUnused Function Parameters:".lavender.bold)
+            for item in unusedParameterItems {
+                let parentInfo = item.parentType != nil ? " in \(item.parentType!)" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !unusedImportItems.isEmpty {
+            print("\nUnused Imports:".pink.bold)
+            for item in unusedImportItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }

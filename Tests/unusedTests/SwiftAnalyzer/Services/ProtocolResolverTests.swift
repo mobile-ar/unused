@@ -207,68 +207,6 @@ struct ProtocolResolverTests {
     }
 
     @Test
-    func testMergedResultsConvenienceInit() async {
-        let result1 = ProtocolVisitorResult(
-            protocolRequirements: ["ProtocolA": Set(["methodA"])],
-            protocolInheritance: [:],
-            projectDefinedProtocols: Set(["ProtocolA"]),
-            importedModules: Set(["Foundation"]),
-            conformedProtocols: Set(["ProtocolA"])
-        )
-
-        let result2 = ProtocolVisitorResult(
-            protocolRequirements: ["ProtocolB": Set(["methodB"])],
-            protocolInheritance: ["ProtocolB": Set(["ProtocolA"])],
-            projectDefinedProtocols: Set(["ProtocolB"]),
-            importedModules: Set(["SwiftUI"]),
-            conformedProtocols: Set(["ProtocolB"])
-        )
-
-        let resolver = ProtocolResolver(
-            mergedResults: [result1, result2],
-            swiftInterfaceClient: swiftInterfaceClient
-        )
-
-        #expect(resolver.protocolRequirements["ProtocolA"]?.contains("methodA") == true)
-        #expect(resolver.protocolRequirements["ProtocolB"]?.contains("methodB") == true)
-        #expect(resolver.protocolInheritance["ProtocolB"]?.contains("ProtocolA") == true)
-        #expect(resolver.projectDefinedProtocols.contains("ProtocolA"))
-        #expect(resolver.projectDefinedProtocols.contains("ProtocolB"))
-        #expect(resolver.importedModules.contains("Foundation"))
-        #expect(resolver.importedModules.contains("SwiftUI"))
-        #expect(resolver.conformedProtocols.contains("ProtocolA"))
-        #expect(resolver.conformedProtocols.contains("ProtocolB"))
-    }
-
-    @Test
-    func testMergedResultsResolvesInheritance() {
-        let result1 = ProtocolVisitorResult(
-            protocolRequirements: ["Parent": Set(["parentMethod"])],
-            protocolInheritance: [:],
-            projectDefinedProtocols: Set(["Parent"]),
-            importedModules: Set(),
-            conformedProtocols: Set()
-        )
-
-        let result2 = ProtocolVisitorResult(
-            protocolRequirements: ["Child": Set(["childMethod"])],
-            protocolInheritance: ["Child": Set(["Parent"])],
-            projectDefinedProtocols: Set(["Child"]),
-            importedModules: Set(),
-            conformedProtocols: Set(["Child", "Parent"])
-        )
-
-        let resolver = ProtocolResolver(
-            mergedResults: [result1, result2],
-            swiftInterfaceClient: swiftInterfaceClient
-        )
-        resolver.resolveInheritedRequirements()
-
-        #expect(resolver.protocolRequirements["Child"]?.contains("childMethod") == true)
-        #expect(resolver.protocolRequirements["Child"]?.contains("parentMethod") == true)
-    }
-
-    @Test
     func testResolveExternalProtocolsWithUnknownProtocol() async {
         let resolver = ProtocolResolver(
             protocolRequirements: [:],

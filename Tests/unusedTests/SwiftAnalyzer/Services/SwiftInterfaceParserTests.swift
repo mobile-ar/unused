@@ -403,4 +403,239 @@ struct SwiftInterfaceParserTests {
         #expect(parents?.count == 2)
     }
 
+    @Test
+    func testParseExportedSymbolsFindsStructs() {
+        let moduleInterface = """
+        public struct URL {
+            public var absoluteString: String { get }
+        }
+
+        public struct Data {
+            public var count: Int { get }
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("URL"))
+        #expect(symbols.contains("Data"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsClasses() {
+        let moduleInterface = """
+        public class NSObject {
+            public func description() -> String
+        }
+
+        public class JSONDecoder {
+            public func decode<T>(_ type: T.Type, from data: Data) throws -> T
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("NSObject"))
+        #expect(symbols.contains("JSONDecoder"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsEnums() {
+        let moduleInterface = """
+        public enum ComparisonResult : Int {
+            case orderedAscending
+            case orderedSame
+            case orderedDescending
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("ComparisonResult"))
+        #expect(symbols.contains("orderedAscending"))
+        #expect(symbols.contains("orderedSame"))
+        #expect(symbols.contains("orderedDescending"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsProtocols() {
+        let moduleInterface = """
+        public protocol Codable : Decodable, Encodable {
+        }
+
+        public protocol Identifiable {
+            associatedtype ID
+            var id: ID { get }
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("Codable"))
+        #expect(symbols.contains("Identifiable"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsActors() {
+        let moduleInterface = """
+        public actor MyActor {
+            public func perform()
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("MyActor"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsFunctions() {
+        let moduleInterface = """
+        public func print(_ items: Any...)
+        public func abs<T>(_ x: T) -> T where T : Comparable
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("print"))
+        #expect(symbols.contains("abs"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsVariables() {
+        let moduleInterface = """
+        public let pi: Double
+        public var stderr: UnsafeMutablePointer<FILE>
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("pi"))
+        #expect(symbols.contains("stderr"))
+    }
+
+    @Test
+    func testParseExportedSymbolsFindsTypealiases() {
+        let moduleInterface = """
+        public typealias StringLiteralType = String
+        public typealias IntegerLiteralType = Int
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("StringLiteralType"))
+        #expect(symbols.contains("IntegerLiteralType"))
+    }
+
+    @Test
+    func testParseExportedSymbolsIgnoresCommentsAndEmptyLines() {
+        let moduleInterface = """
+        // This is a comment
+        /* Block comment */
+
+        /// Documentation comment
+        public struct RealType {
+        }
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("RealType"))
+        #expect(!symbols.contains("This"))
+        #expect(!symbols.contains("Block"))
+    }
+
+    @Test
+    func testParseExportedSymbolsReturnsEmptyForEmptyInterface() {
+        let moduleInterface = """
+        // Only comments here
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.isEmpty)
+    }
+
+    @Test
+    func testParseExportedSymbolsComplexInterface() {
+        let moduleInterface = """
+        import Swift
+
+        @available(iOS 13.0, macOS 10.15, *)
+        @propertyWrapper @frozen public struct State<Value> : DynamicProperty {
+            public var wrappedValue: Value { get nonmutating set }
+            public var projectedValue: Binding<Value> { get }
+        }
+
+        public protocol View {
+            associatedtype Body : View
+            @ViewBuilder var body: Self.Body { get }
+        }
+
+        public struct Text : View {
+            public var body: some View { get }
+        }
+
+        public enum Alignment {
+            case leading
+            case center
+            case trailing
+        }
+
+        public typealias Animation = SwiftUI.Animation
+
+        public func withAnimation<Result>(_ animation: Animation?, _ body: () throws -> Result) rethrows -> Result
+        """
+
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+
+        #expect(symbols.contains("State"))
+        #expect(symbols.contains("View"))
+        #expect(symbols.contains("Text"))
+        #expect(symbols.contains("Alignment"))
+        #expect(symbols.contains("leading"))
+        #expect(symbols.contains("center"))
+        #expect(symbols.contains("trailing"))
+        #expect(symbols.contains("Animation"))
+        #expect(symbols.contains("withAnimation"))
+        #expect(symbols.contains("wrappedValue"))
+        #expect(symbols.contains("projectedValue"))
+        #expect(symbols.contains("body"))
+    }
+
+    @Test
+    func testGetExportedSymbolsFromSwiftModule() {
+        let parser = SwiftInterfaceParser()!
+        guard let symbols = parser.getExportedSymbols(inModule: "Swift") else {
+            return
+        }
+
+        #expect(symbols.contains("String"))
+        #expect(symbols.contains("Int"))
+        #expect(symbols.contains("Array"))
+        #expect(symbols.contains("Dictionary"))
+        #expect(symbols.contains("Optional"))
+        #expect(symbols.contains("Bool"))
+        #expect(symbols.contains("print"))
+    }
+
+    @Test
+    func testGetExportedSymbolsFromNonExistentModule() {
+        let parser = SwiftInterfaceParser()!
+        let symbols = parser.getExportedSymbols(inModule: "TotallyFakeModuleThatDoesNotExist")
+
+        #expect(symbols == nil)
+    }
+
 }

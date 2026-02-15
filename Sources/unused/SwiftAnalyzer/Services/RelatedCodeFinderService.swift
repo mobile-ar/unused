@@ -20,6 +20,12 @@ struct RelatedCodeFinderService {
             return []
         case .protocol:
             return []
+        case .typealias:
+            return []
+        case .parameter:
+            return []
+        case .import:
+            return []
         }
     }
 

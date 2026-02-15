@@ -8,6 +8,9 @@ enum DeclarationType: String, Codable {
     case `class`
     case enumCase
     case `protocol`
+    case `typealias`
+    case parameter
+    case `import`
 }
 
 enum ExclusionReason: String, Codable {

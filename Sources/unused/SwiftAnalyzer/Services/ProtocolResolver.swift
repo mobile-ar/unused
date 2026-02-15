@@ -29,35 +29,6 @@ class ProtocolResolver {
         self.swiftInterfaceClient = swiftInterfaceClient
     }
 
-    convenience init(mergedResults: [ProtocolVisitorResult], swiftInterfaceClient: SwiftInterfaceClient) {
-        var protocolRequirements: [String: Set<String>] = [:]
-        var protocolInheritance: [String: Set<String>] = [:]
-        var projectDefinedProtocols = Set<String>()
-        var importedModules = Set<String>()
-        var conformedProtocols = Set<String>()
-
-        for result in mergedResults {
-            for (protocolName, methods) in result.protocolRequirements {
-                protocolRequirements[protocolName, default: Set()].formUnion(methods)
-            }
-            for (protocolName, parents) in result.protocolInheritance {
-                protocolInheritance[protocolName, default: Set()].formUnion(parents)
-            }
-            projectDefinedProtocols.formUnion(result.projectDefinedProtocols)
-            importedModules.formUnion(result.importedModules)
-            conformedProtocols.formUnion(result.conformedProtocols)
-        }
-
-        self.init(
-            protocolRequirements: protocolRequirements,
-            protocolInheritance: protocolInheritance,
-            projectDefinedProtocols: projectDefinedProtocols,
-            importedModules: importedModules,
-            conformedProtocols: conformedProtocols,
-            swiftInterfaceClient: swiftInterfaceClient
-        )
-    }
-
     func resolveExternalProtocols() async {
         let allReferencedProtocols = conformedProtocols
             .union(protocolInheritance.values.reduce(into: Set<String>()) { $0.formUnion($1) })

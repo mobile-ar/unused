@@ -22,6 +22,9 @@ class SwiftAnalyzer {
     private var writeOnlyProperties: Set<PropertyInfo> = []
     private var propertyWrappers: Set<String> = []
     private var projectPropertyWrappers: Set<String> = []
+    private var unusedParameterDeclarations: [Declaration] = []
+    private var unusedImportDeclarations: [Declaration] = []
+    private var moduleSymbolCache: [String: Set<String>] = [:]
     private let options: AnalyzerOptions
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient
@@ -92,27 +95,21 @@ class SwiftAnalyzer {
         mergeProtocolResults(protocolResults)
 
         // Scan dependency source files for protocol definitions (third-party packages)
-        let dependencyFiles = getDependencyProtocolFiles(in: directory)
-        if !dependencyFiles.isEmpty {
-            let depTracker = ProgressTracker(total: dependencyFiles.count, prefix: "Scanning dependency protocols...")
-            let depResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult?.self) { group in
-                for file in dependencyFiles {
+        let dependencyParsedFiles = parseDependencyProtocolFiles(in: directory)
+        if !dependencyParsedFiles.isEmpty {
+            let depTracker = ProgressTracker(total: dependencyParsedFiles.count, prefix: "Scanning dependency protocols...")
+            let depResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult.self) { group in
+                for parsedFile in dependencyParsedFiles {
                     group.addTask {
                         await depTracker.increment()
-                        guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-                            return nil
-                        }
-                        let sourceFile = Parser.parse(source: source)
                         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
-                        visitor.walk(sourceFile)
+                        visitor.walk(parsedFile.sourceFile)
                         return visitor.result
                     }
                 }
                 var results: [ProtocolVisitorResult] = []
                 for await result in group {
-                    if let result {
-                        results.append(result)
-                    }
+                    results.append(result)
                 }
                 return results
             }
@@ -167,14 +164,43 @@ class SwiftAnalyzer {
         // Post-process: mark enum cases belonging to CaseIterable enums
         markCaseIterableEnumCases()
 
-        // Step 4: Collect usage and write-only info in parallel (combined per-file)
+        // Step 4: Collect unused parameters in parallel
+        let paramTracker = ProgressTracker(total: parsedFileCount, prefix: "Checking parameters...")
+        let parameterResults: [[Declaration]] = await withTaskGroup(of: [Declaration].self) { group in
+            let requirements = protocolRequirements
+            for parsed in parsedFiles {
+                group.addTask {
+                    await paramTracker.increment()
+                    let visitor = UnusedParameterVisitor(
+                        filePath: parsed.url.path,
+                        protocolRequirements: requirements,
+                        sourceFile: parsed.sourceFile
+                    )
+                    visitor.walk(parsed.sourceFile)
+                    return visitor.unusedParameters
+                }
+            }
+            var results: [[Declaration]] = []
+            results.reserveCapacity(parsedFileCount)
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
+        await paramTracker.finish()
+
+        for result in parameterResults {
+            unusedParameterDeclarations.append(contentsOf: result)
+        }
+
+        // Step 5: Collect usage, write-only, and per-file import info in parallel
         let knownTypeNames = Set(declarations.filter { $0.type == .class }.map(\.name))
         let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
         let allTypePropertyDeclarations = typePropertyDeclarations
 
         let usageTracker = ProgressTracker(total: parsedFileCount, prefix: "Collecting usage...")
-        let combinedResults: [(usage: UsageVisitorResult, writeOnly: WriteOnlyVisitorResult)] = await withTaskGroup(
-            of: (UsageVisitorResult, WriteOnlyVisitorResult).self
+        let combinedResults: [(usage: UsageVisitorResult, writeOnly: WriteOnlyVisitorResult, importUsage: ImportUsageResult)] = await withTaskGroup(
+            of: (UsageVisitorResult, WriteOnlyVisitorResult, ImportUsageResult).self
         ) { group in
             for parsed in parsedFiles {
                 group.addTask {
@@ -202,10 +228,18 @@ class SwiftAnalyzer {
                         propertyWrites: writeOnlyVisitor.propertyWrites
                     )
 
-                    return (usageResult, writeOnlyResult)
+                    // Import usage visitor (per-file import tracking)
+                    let importVisitor = ImportUsageVisitor(
+                        filePath: parsed.url.path,
+                        sourceFile: parsed.sourceFile
+                    )
+                    importVisitor.walk(parsed.sourceFile)
+                    let importResult = importVisitor.result
+
+                    return (usageResult, writeOnlyResult, importResult)
                 }
             }
-            var results: [(UsageVisitorResult, WriteOnlyVisitorResult)] = []
+            var results: [(UsageVisitorResult, WriteOnlyVisitorResult, ImportUsageResult)] = []
             results.reserveCapacity(parsedFileCount)
             for await result in group {
                 results.append(result)
@@ -214,19 +248,24 @@ class SwiftAnalyzer {
         }
         await usageTracker.finish()
 
-        // Merge usage and write-only results
+        // Merge usage and write-only results, collect per-file import results
         var allPropertyReads: Set<PropertyInfo> = []
         var allPropertyWrites: Set<PropertyInfo> = []
-        for (usageResult, writeOnlyResult) in combinedResults {
+        var allImportUsageResults: [ImportUsageResult] = []
+        for (usageResult, writeOnlyResult, importResult) in combinedResults {
             usedIdentifiers.formUnion(usageResult.usedIdentifiers)
             qualifiedMemberUsages.formUnion(usageResult.qualifiedMemberUsages)
             unqualifiedMemberUsages.formUnion(usageResult.unqualifiedMemberUsages)
             bareIdentifierUsages.formUnion(usageResult.bareIdentifierUsages)
             allPropertyReads.formUnion(writeOnlyResult.propertyReads)
             allPropertyWrites.formUnion(writeOnlyResult.propertyWrites)
+            allImportUsageResults.append(importResult)
         }
 
         writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
+
+        // Step 6: Detect unused imports by cross-referencing per-file identifiers with module symbols
+        await detectUnusedImports(allImportUsageResults)
 
         let report = generateReport()
 
@@ -373,6 +412,57 @@ class SwiftAnalyzer {
         }
     }
 
+    private func detectUnusedImports(_ importResults: [ImportUsageResult]) async {
+        // Modules that should never be reported as unused (they provide implicit behaviors)
+        let alwaysNeededModules: Set<String> = ["Swift", "Foundation", "ObjectiveC", "_Concurrency", "_StringProcessing"]
+
+        // Collect all unique module names to query
+        var modulesToResolve = Set<String>()
+        for result in importResults {
+            for importInfo in result.imports {
+                if !alwaysNeededModules.contains(importInfo.moduleName) {
+                    modulesToResolve.insert(importInfo.moduleName)
+                }
+            }
+        }
+
+        // Build module symbol cache
+        for moduleName in modulesToResolve {
+            if moduleSymbolCache[moduleName] == nil {
+                if let symbols = await swiftInterfaceClient.getExportedSymbols(inModule: moduleName) {
+                    moduleSymbolCache[moduleName] = symbols
+                }
+            }
+        }
+
+        // Check each file's imports against its used identifiers
+        for result in importResults {
+            for importInfo in result.imports {
+                if alwaysNeededModules.contains(importInfo.moduleName) {
+                    continue
+                }
+
+                guard let moduleSymbols = moduleSymbolCache[importInfo.moduleName] else {
+                    // Cannot resolve module symbols, skip conservatively
+                    continue
+                }
+
+                let hasUsedSymbol = !moduleSymbols.isDisjoint(with: result.usedIdentifiers)
+
+                if !hasUsedSymbol {
+                    unusedImportDeclarations.append(Declaration(
+                        name: importInfo.moduleName,
+                        type: .import,
+                        file: importInfo.filePath,
+                        line: importInfo.line,
+                        exclusionReason: .none,
+                        parentType: nil
+                    ))
+                }
+            }
+        }
+    }
+
     private func generateReport() -> Report {
         let unusedFunctions = declarations.filter {
             $0.type == .function &&
@@ -396,6 +486,11 @@ class SwiftAnalyzer {
         }
         let unusedProtocols = declarations.filter {
             $0.type == .protocol &&
+            !isUsed($0) &&
+            shouldInclude($0)
+        }
+        let unusedTypealiases = declarations.filter {
+            $0.type == .typealias &&
             !isUsed($0) &&
             shouldInclude($0)
         }
@@ -435,7 +530,7 @@ class SwiftAnalyzer {
         }
 
         var currentId = 1
-        let unusedAll = unusedFunctions + unusedVariables + unusedClasses + unusedEnumCases + unusedProtocols + writeOnlyVariables
+        let unusedAll = unusedFunctions + unusedVariables + unusedClasses + unusedEnumCases + unusedProtocols + unusedTypealiases + unusedParameterDeclarations + unusedImportDeclarations + writeOnlyVariables
 
         var unusedItems: [ReportItem] = []
         for declaration in unusedAll {
@@ -475,7 +570,7 @@ class SwiftAnalyzer {
         )
     }
 
-    func getDependencyProtocolFiles(in directory: String) -> [URL] {
+    func parseDependencyProtocolFiles(in directory: String) -> [ParsedFile] {
         let directoryURL = URL(fileURLWithPath: directory)
         let checkoutsURL = directoryURL.appendingPathComponent(".build/checkouts")
         let fileManager = FileManager.default
@@ -484,7 +579,7 @@ class SwiftAnalyzer {
             return []
         }
 
-        var protocolFiles: [URL] = []
+        var parsedFiles: [ParsedFile] = []
         guard let enumerator = fileManager.enumerator(at: checkoutsURL, includingPropertiesForKeys: nil) else {
             return []
         }
@@ -502,10 +597,11 @@ class SwiftAnalyzer {
                 continue
             }
 
-            protocolFiles.append(element)
+            let sourceFile = Parser.parse(source: content)
+            parsedFiles.append(ParsedFile(url: element, source: content, sourceFile: sourceFile))
         }
 
-        return protocolFiles
+        return parsedFiles
     }
 
 }

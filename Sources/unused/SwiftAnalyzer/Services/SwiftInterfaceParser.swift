@@ -114,6 +114,92 @@ final class SwiftInterfaceParser: Sendable {
     /// Get all property wrapper type names from a module interface
     /// - Parameter moduleName: The name of the module to query
     /// - Returns: A set of property wrapper type names, or nil if the module is unavailable
+    func getExportedSymbols(inModule moduleName: String) -> Set<String>? {
+        guard let interface = getModuleInterface(moduleName: moduleName) else {
+            return nil
+        }
+        return parseExportedSymbols(from: interface)
+    }
+
+    /// Parse all exported symbol names (types, functions, variables, protocols) from a module interface
+    /// - Parameter moduleInterface: The module interface text
+    /// - Returns: A set of all public symbol names
+    func parseExportedSymbols(from moduleInterface: String) -> Set<String> {
+        var symbols = Set<String>()
+        let lines = moduleInterface.components(separatedBy: .newlines)
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Skip comments and empty lines
+            if trimmed.isEmpty || trimmed.hasPrefix("//") || trimmed.hasPrefix("/*") || trimmed.hasPrefix("*") {
+                continue
+            }
+
+            // Match type declarations: struct, class, enum, actor, protocol
+            let typePattern = #"(?:struct|class|enum|actor|protocol)\s+(\w+)"#
+            if let typeRegex = try? NSRegularExpression(pattern: typePattern) {
+                let range = NSRange(trimmed.startIndex..., in: trimmed)
+                let matches = typeRegex.matches(in: trimmed, range: range)
+                for match in matches {
+                    if let nameRange = Range(match.range(at: 1), in: trimmed) {
+                        symbols.insert(String(trimmed[nameRange]))
+                    }
+                }
+            }
+
+            // Match function declarations: func name
+            let funcPattern = #"func\s+([^\s\(<]+)"#
+            if let funcRegex = try? NSRegularExpression(pattern: funcPattern) {
+                let range = NSRange(trimmed.startIndex..., in: trimmed)
+                let matches = funcRegex.matches(in: trimmed, range: range)
+                for match in matches {
+                    if let nameRange = Range(match.range(at: 1), in: trimmed) {
+                        symbols.insert(String(trimmed[nameRange]))
+                    }
+                }
+            }
+
+            // Match variable/constant declarations: var/let name
+            let varPattern = #"(?:var|let)\s+(\w+)"#
+            if let varRegex = try? NSRegularExpression(pattern: varPattern) {
+                let range = NSRange(trimmed.startIndex..., in: trimmed)
+                let matches = varRegex.matches(in: trimmed, range: range)
+                for match in matches {
+                    if let nameRange = Range(match.range(at: 1), in: trimmed) {
+                        symbols.insert(String(trimmed[nameRange]))
+                    }
+                }
+            }
+
+            // Match typealias declarations
+            let typealiasPattern = #"typealias\s+(\w+)"#
+            if let typealiasRegex = try? NSRegularExpression(pattern: typealiasPattern) {
+                let range = NSRange(trimmed.startIndex..., in: trimmed)
+                let matches = typealiasRegex.matches(in: trimmed, range: range)
+                for match in matches {
+                    if let nameRange = Range(match.range(at: 1), in: trimmed) {
+                        symbols.insert(String(trimmed[nameRange]))
+                    }
+                }
+            }
+
+            // Match case declarations (enum cases)
+            let casePattern = #"case\s+(\w+)"#
+            if let caseRegex = try? NSRegularExpression(pattern: casePattern) {
+                let range = NSRange(trimmed.startIndex..., in: trimmed)
+                let matches = caseRegex.matches(in: trimmed, range: range)
+                for match in matches {
+                    if let nameRange = Range(match.range(at: 1), in: trimmed) {
+                        symbols.insert(String(trimmed[nameRange]))
+                    }
+                }
+            }
+        }
+
+        return symbols
+    }
+
     func getPropertyWrappers(inModule moduleName: String) -> Set<String>? {
         guard let interface = getModuleInterface(moduleName: moduleName) else {
             return nil

@@ -17,7 +17,7 @@ struct Filter: AsyncParsableCommand {
     @Option(name: .long, help: "Filter by specific item IDs (e.g., '1-3 5 7-9' or '1,2,3')")
     var ids: String?
 
-    @Option(name: .shortAndLong, parsing: .upToNextOption, help: "Filter by declaration type: function, variable, class, enum-case, protocol")
+    @Option(name: .shortAndLong, parsing: .upToNextOption, help: "Filter by declaration type: function, variable, class, enum-case, protocol, typealias, parameter, import")
     var type: [String] = []
 
     @Option(name: .shortAndLong, help: "Filter by file path pattern (glob pattern, e.g., 'Sources/**/*.swift')")
@@ -84,6 +84,9 @@ struct Filter: AsyncParsableCommand {
         print("  Classes/Structs/Enums: \(summary.classes)".subtext0)
         print("  Enum Cases: \(summary.enumCases)".subtext0)
         print("  Protocols: \(summary.protocols)".subtext0)
+        print("  Typealiases: \(summary.typealiases)".subtext0)
+        print("  Parameters: \(summary.parameters)".subtext0)
+        print("  Imports: \(summary.imports)".subtext0)
         print("  Total: \(filteredItems.count)".green.bold)
 
         if delete || dryRun {
@@ -120,8 +123,14 @@ struct Filter: AsyncParsableCommand {
                 result.append(.enumCase)
             case "protocol", "protocols":
                 result.append(.protocol)
+            case "typealias", "typealiases":
+                result.append(.typealias)
+            case "parameter", "parameters", "param":
+                result.append(.parameter)
+            case "import", "imports":
+                result.append(.import)
             default:
-                throw ValidationError("Invalid type '\(typeString)'. Valid types: function, variable, class, enum-case, protocol")
+                throw ValidationError("Invalid type '\(typeString)'. Valid types: function, variable, class, enum-case, protocol, typealias, parameter, import")
             }
         }
 
@@ -134,6 +143,9 @@ struct Filter: AsyncParsableCommand {
         let classes = items.filter { $0.type == .class }
         let enumCases = items.filter { $0.type == .enumCase }
         let protocols = items.filter { $0.type == .protocol }
+        let typealiases = items.filter { $0.type == .typealias }
+        let parameters = items.filter { $0.type == .parameter }
+        let imports = items.filter { $0.type == .import }
 
         let totalItems = items.count
         let idWidth = max(1, String(totalItems).count)
@@ -176,6 +188,32 @@ struct Filter: AsyncParsableCommand {
         if !protocols.isEmpty {
             print("\nFiltered Protocols:".sapphire.bold)
             for item in protocols {
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !typealiases.isEmpty {
+            print("\nFiltered Typealiases:".teal.bold)
+            for item in typealiases {
+                let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !parameters.isEmpty {
+            print("\nFiltered Parameters:".lavender.bold)
+            for item in parameters {
+                let parentInfo = item.parentType != nil ? " in \(item.parentType!)" : ""
+                let idString = String(format: "%\(idWidth)d", item.id)
+                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+            }
+        }
+
+        if !imports.isEmpty {
+            print("\nFiltered Imports:".pink.bold)
+            for item in imports {
                 let idString = String(format: "%\(idWidth)d", item.id)
                 print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }

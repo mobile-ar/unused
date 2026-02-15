@@ -38,9 +38,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         #expect(fileData.count > 4096, "Test file must be larger than 4KB to validate the fix")
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testFindsProtocolAtBeginningOfFile() throws {
@@ -64,9 +64,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testExcludesFileWithNoProtocol() throws {
@@ -90,9 +90,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(!result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(!result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testExcludesTestFiles() throws {
@@ -116,9 +116,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(!result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(!result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testExcludesBenchmarkFiles() throws {
@@ -142,9 +142,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(!result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(!result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testExcludesExampleFiles() throws {
@@ -168,9 +168,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(!result.map(\.standardizedFileURL).contains(swiftFile.standardizedFileURL))
+        #expect(!result.map(\.url.standardizedFileURL).contains(swiftFile.standardizedFileURL))
     }
 
     @Test func testReturnsEmptyWhenNoCheckoutsDirectory() throws {
@@ -184,7 +184,7 @@ struct SwiftAnalyzerDependencyProtocolTests {
         }
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
         #expect(result.isEmpty)
     }
@@ -210,9 +210,9 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try content.write(to: txtFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
 
-        #expect(!result.map(\.standardizedFileURL).contains(txtFile.standardizedFileURL))
+        #expect(!result.map(\.url.standardizedFileURL).contains(txtFile.standardizedFileURL))
     }
 
     @Test func testFindsMultipleProtocolFiles() throws {
@@ -245,10 +245,40 @@ struct SwiftAnalyzerDependencyProtocolTests {
         try secondContent.write(to: secondFile, atomically: true, encoding: .utf8)
 
         let analyzer = SwiftAnalyzer(directory: tempDir.path)
-        let result = analyzer.getDependencyProtocolFiles(in: tempDir.path)
-        let standardizedResult = result.map(\.standardizedFileURL)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
+        let standardizedResult = result.map(\.url.standardizedFileURL)
 
         #expect(standardizedResult.contains(firstFile.standardizedFileURL))
         #expect(standardizedResult.contains(secondFile.standardizedFileURL))
+    }
+
+    @Test func testParsedFilesContainValidSourceTrees() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        let checkoutsDir = tempDir.appendingPathComponent(".build/checkouts/SomePackage/Sources")
+        try FileManager.default.createDirectory(at: checkoutsDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol MyProtocol {
+            func doWork()
+            var name: String { get }
+        }
+        """
+
+        let swiftFile = checkoutsDir.appendingPathComponent("MyProtocol.swift")
+        try swiftContent.write(to: swiftFile, atomically: true, encoding: .utf8)
+
+        let analyzer = SwiftAnalyzer(directory: tempDir.path)
+        let result = analyzer.parseDependencyProtocolFiles(in: tempDir.path)
+
+        #expect(result.count == 1)
+        let parsed = try #require(result.first)
+        #expect(parsed.source.contains("protocol MyProtocol"))
+        #expect(parsed.sourceFile.statements.count > 0)
     }
 }

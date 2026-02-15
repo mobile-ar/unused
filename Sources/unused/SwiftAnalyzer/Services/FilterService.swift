@@ -69,12 +69,15 @@ struct FilterService {
     /// Returns a summary of the filtered items
     /// - Parameter items: The filtered items
     /// - Returns: A tuple containing counts by type
-    func summary(_ items: [ReportItem]) -> (functions: Int, variables: Int, classes: Int, enumCases: Int, protocols: Int) {
+    func summary(_ items: [ReportItem]) -> (functions: Int, variables: Int, classes: Int, enumCases: Int, protocols: Int, typealiases: Int, parameters: Int, imports: Int) {
         let functions = items.filter { $0.type == .function }.count
         let variables = items.filter { $0.type == .variable }.count
         let classes = items.filter { $0.type == .class }.count
         let enumCases = items.filter { $0.type == .enumCase }.count
         let protocols = items.filter { $0.type == .protocol }.count
-        return (functions, variables, classes, enumCases, protocols)
+        let typealiases = items.filter { $0.type == .typealias }.count
+        let parameters = items.filter { $0.type == .parameter }.count
+        let imports = items.filter { $0.type == .import }.count
+        return (functions, variables, classes, enumCases, protocols, typealiases, parameters, imports)
     }
 }

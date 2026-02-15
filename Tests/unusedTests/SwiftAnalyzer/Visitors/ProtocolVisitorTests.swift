@@ -697,40 +697,4 @@ struct ProtocolVisitorTests {
         #expect(result.importedModules.contains("SwiftUI"))
     }
 
-    @Test
-    func testProtocolResolverMergesMultipleResults() async throws {
-        let source1 = """
-        protocol ProtocolA {
-            func methodA()
-        }
-        """
-
-        let source2 = """
-        protocol ProtocolB {
-            func methodB()
-        }
-
-        struct MyStruct: ProtocolA, ProtocolB {
-            func methodA() {}
-            func methodB() {}
-        }
-        """
-
-        let sourceFile1 = Parser.parse(source: source1)
-        let visitor1 = ProtocolVisitor(viewMode: .sourceAccurate)
-        visitor1.walk(sourceFile1)
-
-        let sourceFile2 = Parser.parse(source: source2)
-        let visitor2 = ProtocolVisitor(viewMode: .sourceAccurate)
-        visitor2.walk(sourceFile2)
-
-        let resolver = ProtocolResolver(
-            mergedResults: [visitor1.result, visitor2.result],
-            swiftInterfaceClient: swiftInterfaceClient
-        )
-        await resolver.resolveExternalProtocols()
-
-        #expect(resolver.protocolRequirements["ProtocolA"]?.contains("methodA") == true)
-        #expect(resolver.protocolRequirements["ProtocolB"]?.contains("methodB") == true)
-    }
 }

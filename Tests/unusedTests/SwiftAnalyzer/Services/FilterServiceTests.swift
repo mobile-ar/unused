@@ -284,6 +284,9 @@ struct FilterServiceTests {
         #expect(summary.classes == 1)
         #expect(summary.enumCases == 0)
         #expect(summary.protocols == 0)
+        #expect(summary.typealiases == 0)
+        #expect(summary.parameters == 0)
+        #expect(summary.imports == 0)
     }
 
     @Test func testSummaryWithFilteredItems() async throws {
@@ -298,6 +301,156 @@ struct FilterServiceTests {
         #expect(summary.classes == 0)
         #expect(summary.enumCases == 0)
         #expect(summary.protocols == 0)
+        #expect(summary.typealiases == 0)
+        #expect(summary.parameters == 0)
+        #expect(summary.imports == 0)
+    }
+
+    @Test func testSummaryWithNewDeclarationTypes() async throws {
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "MyAlias",
+                type: .typealias,
+                file: "/test/file.swift",
+                line: 1,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 2,
+                name: "AnotherAlias",
+                type: .typealias,
+                file: "/test/file.swift",
+                line: 5,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 3,
+                name: "unusedParam",
+                type: .parameter,
+                file: "/test/file.swift",
+                line: 10,
+                exclusionReason: .none,
+                parentType: "MyClass.doWork"
+            ),
+            ReportItem(
+                id: 4,
+                name: "SomeModule",
+                type: .import,
+                file: "/test/file.swift",
+                line: 1,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 5,
+                name: "unusedFunc",
+                type: .function,
+                file: "/test/file.swift",
+                line: 20,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let filterService = FilterService()
+        let summary = filterService.summary(items)
+
+        #expect(summary.functions == 1)
+        #expect(summary.variables == 0)
+        #expect(summary.classes == 0)
+        #expect(summary.enumCases == 0)
+        #expect(summary.protocols == 0)
+        #expect(summary.typealiases == 2)
+        #expect(summary.parameters == 1)
+        #expect(summary.imports == 1)
+    }
+
+    @Test func testFilterByTypeTypealias() async throws {
+        let unusedItems = [
+            ReportItem(id: 1, name: "MyAlias", type: .typealias, file: "/test.swift", line: 1, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 2, name: "unusedFunc", type: .function, file: "/test.swift", line: 5, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 3, name: "AnotherAlias", type: .typealias, file: "/test.swift", line: 10, exclusionReason: .none, parentType: nil)
+        ]
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        let filterService = FilterService()
+        let result = filterService.filter(report: report, byTypes: [.typealias])
+
+        #expect(result.count == 2)
+        #expect(result.allSatisfy { $0.type == .typealias })
+    }
+
+    @Test func testFilterByTypeParameter() async throws {
+        let unusedItems = [
+            ReportItem(id: 1, name: "param1", type: .parameter, file: "/test.swift", line: 1, exclusionReason: .none, parentType: "foo"),
+            ReportItem(id: 2, name: "unusedFunc", type: .function, file: "/test.swift", line: 5, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 3, name: "param2", type: .parameter, file: "/test.swift", line: 10, exclusionReason: .none, parentType: "bar")
+        ]
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        let filterService = FilterService()
+        let result = filterService.filter(report: report, byTypes: [.parameter])
+
+        #expect(result.count == 2)
+        #expect(result.allSatisfy { $0.type == .parameter })
+    }
+
+    @Test func testFilterByTypeImport() async throws {
+        let unusedItems = [
+            ReportItem(id: 1, name: "SomeModule", type: .import, file: "/test.swift", line: 1, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 2, name: "unusedFunc", type: .function, file: "/test.swift", line: 5, exclusionReason: .none, parentType: nil)
+        ]
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        let filterService = FilterService()
+        let result = filterService.filter(report: report, byTypes: [.import])
+
+        #expect(result.count == 1)
+        #expect(result.first?.type == .import)
+        #expect(result.first?.name == "SomeModule")
+    }
+
+    @Test func testFilterByMultipleNewTypes() async throws {
+        let unusedItems = [
+            ReportItem(id: 1, name: "MyAlias", type: .typealias, file: "/test.swift", line: 1, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 2, name: "param1", type: .parameter, file: "/test.swift", line: 5, exclusionReason: .none, parentType: "foo"),
+            ReportItem(id: 3, name: "SomeModule", type: .import, file: "/test.swift", line: 1, exclusionReason: .none, parentType: nil),
+            ReportItem(id: 4, name: "unusedFunc", type: .function, file: "/test.swift", line: 10, exclusionReason: .none, parentType: nil)
+        ]
+
+        let report = Report(
+            unused: unusedItems,
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            options: ReportOptions(),
+            testFilesExcluded: 0
+        )
+
+        let filterService = FilterService()
+        let result = filterService.filter(report: report, byTypes: [.typealias, .parameter, .import])
+
+        #expect(result.count == 3)
+        #expect(!result.contains { $0.type == .function })
     }
 
     @Test func testFilterCriteriaIsEmpty() async throws {
