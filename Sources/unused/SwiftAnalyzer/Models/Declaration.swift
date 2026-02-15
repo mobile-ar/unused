@@ -35,7 +35,7 @@ enum ExclusionReason: String, Codable {
 
 }
 
-struct Declaration {
+struct Declaration: Sendable {
 
     let name: String
     let type: DeclarationType

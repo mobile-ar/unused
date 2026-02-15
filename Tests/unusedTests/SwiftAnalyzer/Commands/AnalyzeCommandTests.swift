@@ -349,10 +349,10 @@ struct AnalyzeCommandTests {
         let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
         try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
 
-        let files = await getSwiftFiles(in: tempDir, includeTests: false)
+        let result = await getSwiftFiles(in: tempDir, includeTests: false)
 
-        #expect(files.count == 1)
-        #expect(files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.files.count == 1)
+        #expect(result.files.first?.lastPathComponent == "Regular.swift")
     }
 
     @Test func testGetSwiftFilesIncludesTestsWhenFlagSet() async throws {
@@ -374,9 +374,9 @@ struct AnalyzeCommandTests {
         let testInTestsDir = testsDir.appendingPathComponent("SomeTest.swift")
         try "// test in Tests dir".write(to: testInTestsDir, atomically: true, encoding: .utf8)
 
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
 
-        #expect(files.count == 3)
+        #expect(result.files.count == 3)
     }
 
     @Test func testIsTestFileDetectsTestFiles() async throws {
@@ -435,18 +435,26 @@ struct AnalyzeCommandTests {
         try testContent.write(to: testFile, atomically: true, encoding: .utf8)
 
         let optionsWithoutTests = AnalyzerOptions(includeTests: false)
-        let analyzerWithoutTests = SwiftAnalyzer(options: optionsWithoutTests, directory: tempDir.path)
-        let filesWithoutTests = await getSwiftFiles(in: tempDir, includeTests: false)
-        await analyzerWithoutTests.analyzeFiles(filesWithoutTests)
+        let discoveryWithoutTests = await getSwiftFiles(in: tempDir, includeTests: false)
+        let analyzerWithoutTests = SwiftAnalyzer(
+            options: optionsWithoutTests,
+            directory: tempDir.path,
+            excludedTestFileCount: discoveryWithoutTests.excludedTestFileCount
+        )
+        await analyzerWithoutTests.analyzeFiles(discoveryWithoutTests.files)
 
-        #expect(filesWithoutTests.count == 1)
+        #expect(discoveryWithoutTests.files.count == 1)
 
         let optionsWithTests = AnalyzerOptions(includeTests: true)
-        let analyzerWithTests = SwiftAnalyzer(options: optionsWithTests, directory: tempDir.path)
-        let filesWithTests = await getSwiftFiles(in: tempDir, includeTests: true)
-        await analyzerWithTests.analyzeFiles(filesWithTests)
+        let discoveryWithTests = await getSwiftFiles(in: tempDir, includeTests: true)
+        let analyzerWithTests = SwiftAnalyzer(
+            options: optionsWithTests,
+            directory: tempDir.path,
+            excludedTestFileCount: discoveryWithTests.excludedTestFileCount
+        )
+        await analyzerWithTests.analyzeFiles(discoveryWithTests.files)
 
-        #expect(filesWithTests.count == 2)
+        #expect(discoveryWithTests.files.count == 2)
     }
 
     @Test func testDisplayExistingResultsFromUnusedFile() async throws {

@@ -2,7 +2,7 @@
 //  Created by Fernando Romiti on 01/01/2026.
 //
 
-struct PropertyInfo: Hashable {
+struct PropertyInfo: Hashable, Sendable {
     let name: String
     let line: Int
     let filePath: String

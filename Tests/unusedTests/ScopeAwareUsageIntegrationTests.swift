@@ -45,7 +45,6 @@ struct ScopeAwareUsageIntegrationTests {
 
         let report = try ReportService.read(from: tempDir.path)
 
-        let unusedNames = report.unused.map(\.name)
         let unusedWithParent = report.unused.map { ($0.name, $0.parentType) }
 
         let validatorProcessUnused = unusedWithParent.contains { $0.0 == "process" && $0.1 == "Validator" }

@@ -28,10 +28,11 @@ struct FileHelperTests {
         let jsonFile = tempDir.appendingPathComponent("config.json")
         try "{}".write(to: jsonFile, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
         
-        #expect(files.count == 2)
-        #expect(files.allSatisfy { $0.pathExtension == "swift" })
+        #expect(result.files.count == 2)
+        #expect(result.files.allSatisfy { $0.pathExtension == "swift" })
+        #expect(result.excludedTestFileCount == 0)
     }
     
     @Test func testGetSwiftFilesExcludesBuildDirectory() async throws {
@@ -50,10 +51,10 @@ struct FileHelperTests {
         let buildFile = buildDir.appendingPathComponent("Build.swift")
         try "// build file".write(to: buildFile, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
         
-        #expect(files.count == 1)
-        #expect(files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.files.count == 1)
+        #expect(result.files.first?.lastPathComponent == "Regular.swift")
     }
     
     @Test func testGetSwiftFilesExcludesTestFilesByDefault() async throws {
@@ -70,10 +71,11 @@ struct FileHelperTests {
         let testFile = tempDir.appendingPathComponent("RegularTest.swift")
         try "// test".write(to: testFile, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir)
+        let result = await getSwiftFiles(in: tempDir)
         
-        #expect(files.count == 1)
-        #expect(files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.files.count == 1)
+        #expect(result.files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.excludedTestFileCount == 1)
     }
     
     @Test func testGetSwiftFilesIncludesTestsWhenRequested() async throws {
@@ -90,9 +92,10 @@ struct FileHelperTests {
         let testFile = tempDir.appendingPathComponent("RegularTest.swift")
         try "// test".write(to: testFile, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
         
-        #expect(files.count == 2)
+        #expect(result.files.count == 2)
+        #expect(result.excludedTestFileCount == 0)
     }
     
     @Test func testIsTestFileDetectsTestInFileName() async throws {
@@ -155,9 +158,9 @@ struct FileHelperTests {
         let nestedFile = nestedDir.appendingPathComponent("Nested.swift")
         try "// nested".write(to: nestedFile, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
         
-        #expect(files.count == 3)
+        #expect(result.files.count == 3)
     }
     
     @Test func testGetSwiftFilesHandlesEmptyDirectory() async throws {
@@ -168,9 +171,10 @@ struct FileHelperTests {
             try? FileManager.default.removeItem(at: tempDir)
         }
         
-        let files = await getSwiftFiles(in: tempDir, includeTests: true)
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
         
-        #expect(files.isEmpty)
+        #expect(result.files.isEmpty)
+        #expect(result.excludedTestFileCount == 0)
     }
     
     @Test func testGetSwiftFilesExcludesMultipleTestPatterns() async throws {
@@ -195,10 +199,11 @@ struct FileHelperTests {
         let testFile3 = testsDir.appendingPathComponent("SomeFile.swift")
         try "// test 3".write(to: testFile3, atomically: true, encoding: .utf8)
         
-        let files = await getSwiftFiles(in: tempDir)
+        let result = await getSwiftFiles(in: tempDir)
         
-        #expect(files.count == 1)
-        #expect(files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.files.count == 1)
+        #expect(result.files.first?.lastPathComponent == "Regular.swift")
+        #expect(result.excludedTestFileCount == 3)
     }
     
     @Test func testIsTestFileDetectsXCTestImport() async throws {
@@ -347,5 +352,89 @@ struct FileHelperTests {
         """.write(to: testFile, atomically: true, encoding: .utf8)
         
         #expect(isTestFile(testFile))
+    }
+
+    @Test func testSourceContainsTestImportDetectsXCTest() {
+        let source = """
+        import Foundation
+        import XCTest
+        
+        class SomeTests: XCTestCase {}
+        """
+        #expect(sourceContainsTestImport(source))
+    }
+
+    @Test func testSourceContainsTestImportDetectsTesting() {
+        let source = """
+        import Foundation
+        import Testing
+        
+        struct SomeTests {}
+        """
+        #expect(sourceContainsTestImport(source))
+    }
+
+    @Test func testSourceContainsTestImportReturnsFalseForNonTestImports() {
+        let source = """
+        import Foundation
+        import SwiftUI
+        
+        struct MyView {}
+        """
+        #expect(!sourceContainsTestImport(source))
+    }
+
+    @Test func testSourceContainsTestImportStopsAtNonImportLine() {
+        let source = """
+        import Foundation
+        
+        struct MyStruct {
+            // This line mentions XCTest but it's not an import
+        }
+        """
+        #expect(!sourceContainsTestImport(source))
+    }
+
+    @Test func testExcludedTestFileCountAccuracy() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        try "// regular".write(to: regularFile, atomically: true, encoding: .utf8)
+
+        let testFile1 = tempDir.appendingPathComponent("FeatureTest.swift")
+        try "// test".write(to: testFile1, atomically: true, encoding: .utf8)
+
+        let testFile2 = tempDir.appendingPathComponent("HelperTests.swift")
+        try "// test".write(to: testFile2, atomically: true, encoding: .utf8)
+
+        let result = await getSwiftFiles(in: tempDir, includeTests: false)
+
+        #expect(result.files.count == 1)
+        #expect(result.excludedTestFileCount == 2)
+    }
+
+    @Test func testExcludedTestFileCountZeroWhenIncludingTests() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let regularFile = tempDir.appendingPathComponent("Regular.swift")
+        try "// regular".write(to: regularFile, atomically: true, encoding: .utf8)
+
+        let testFile = tempDir.appendingPathComponent("FeatureTest.swift")
+        try "// test".write(to: testFile, atomically: true, encoding: .utf8)
+
+        let result = await getSwiftFiles(in: tempDir, includeTests: true)
+
+        #expect(result.files.count == 2)
+        #expect(result.excludedTestFileCount == 0)
     }
 }

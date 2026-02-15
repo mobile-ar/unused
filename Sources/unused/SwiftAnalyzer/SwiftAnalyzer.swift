@@ -12,94 +12,219 @@ class SwiftAnalyzer {
     private var qualifiedMemberUsages = Set<QualifiedUsage>()
     private var unqualifiedMemberUsages = Set<String>()
     private var bareIdentifierUsages = Set<String>()
-    private var protocolRequirements: [String: Set<String>] = [:] // protocol name -> method names
-    private var typeProtocolConformance: [String: Set<String>] = [:] // type name -> protocol names
-    private var typePropertyDeclarations: [String: [PropertyInfo]] = [:] // type name -> property info
+    private var protocolRequirements: [String: Set<String>] = [:]
+    private var protocolInheritance: [String: Set<String>] = [:]
+    private var projectDefinedProtocols: Set<String> = []
+    private var importedModules: Set<String> = []
+    private var conformedProtocols: Set<String> = []
+    private var typeProtocolConformance: [String: Set<String>] = [:]
+    private var typePropertyDeclarations: [String: [PropertyInfo]] = [:]
     private var writeOnlyProperties: Set<PropertyInfo> = []
-    private var propertyWrappers: Set<String> = [] // dynamically detected property wrappers
-    private var projectPropertyWrappers: Set<String> = [] // property wrappers defined in the project
+    private var propertyWrappers: Set<String> = []
+    private var projectPropertyWrappers: Set<String> = []
     private let options: AnalyzerOptions
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient
+    private let excludedTestFileCount: Int
 
-    init(options: AnalyzerOptions = AnalyzerOptions(), directory: String, swiftInterfaceClient: SwiftInterfaceClient = SwiftInterfaceClient()) {
+    init(
+        options: AnalyzerOptions = AnalyzerOptions(),
+        directory: String,
+        swiftInterfaceClient: SwiftInterfaceClient = SwiftInterfaceClient(),
+        excludedTestFileCount: Int = 0
+    ) {
         self.options = options
         self.directory = directory
         self.swiftInterfaceClient = swiftInterfaceClient
+        self.excludedTestFileCount = excludedTestFileCount
     }
 
     func analyzeFiles(_ files: [URL]) async {
         let totalFiles = files.count
 
-        // First pass: collect protocol requirements from project files
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
-        for (index, file) in files.enumerated() {
-            printProgressBar(prefix: "Analyzing protocols...", current: index + 1, total: totalFiles)
-            collectProtocols(at: file, using: protocolVisitor)
+        // Step 1: Parse all files in parallel (read from disk once, parse once)
+        let parseTracker = ProgressTracker(total: totalFiles, prefix: "Parsing files...")
+        let parsedFiles: [ParsedFile] = await withTaskGroup(of: ParsedFile?.self) { group in
+            for file in files {
+                group.addTask {
+                    await parseTracker.increment()
+                    guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+                        return nil
+                    }
+                    let sourceFile = Parser.parse(source: source)
+                    return ParsedFile(url: file, source: source, sourceFile: sourceFile)
+                }
+            }
+            var results: [ParsedFile] = []
+            results.reserveCapacity(totalFiles)
+            for await parsed in group {
+                if let parsed {
+                    results.append(parsed)
+                }
+            }
+            return results
         }
-        print("")
+        await parseTracker.finish()
+
+        let parsedFileCount = parsedFiles.count
+
+        // Step 2: Collect protocol information in parallel
+        let protocolTracker = ProgressTracker(total: parsedFileCount, prefix: "Analyzing protocols...")
+        let protocolResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult.self) { group in
+            for parsed in parsedFiles {
+                group.addTask {
+                    await protocolTracker.increment()
+                    let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+                    visitor.walk(parsed.sourceFile)
+                    return visitor.result
+                }
+            }
+            var results: [ProtocolVisitorResult] = []
+            results.reserveCapacity(parsedFileCount)
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
+        await protocolTracker.finish()
+
+        // Merge protocol results
+        mergeProtocolResults(protocolResults)
 
         // Scan dependency source files for protocol definitions (third-party packages)
         let dependencyFiles = getDependencyProtocolFiles(in: directory)
         if !dependencyFiles.isEmpty {
-            for (index, file) in dependencyFiles.enumerated() {
-                printProgressBar(prefix: "Scanning dependency protocols...", current: index + 1, total: dependencyFiles.count)
-                collectProtocols(at: file, using: protocolVisitor)
+            let depTracker = ProgressTracker(total: dependencyFiles.count, prefix: "Scanning dependency protocols...")
+            let depResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult?.self) { group in
+                for file in dependencyFiles {
+                    group.addTask {
+                        await depTracker.increment()
+                        guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+                            return nil
+                        }
+                        let sourceFile = Parser.parse(source: source)
+                        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+                        visitor.walk(sourceFile)
+                        return visitor.result
+                    }
+                }
+                var results: [ProtocolVisitorResult] = []
+                for await result in group {
+                    if let result {
+                        results.append(result)
+                    }
+                }
+                return results
             }
-            print("")
+            await depTracker.finish()
+
+            mergeProtocolResults(depResults)
         }
 
         // Resolve external protocols via SwiftInterface
-        await protocolVisitor.resolveExternalProtocols()
+        await resolveExternalProtocols()
 
         // Propagate inherited protocol requirements transitively
-        protocolVisitor.resolveInheritedRequirements()
+        resolveInheritedRequirements()
 
         // Collect property wrappers from imported modules
-        // Include SwiftUICore because many SwiftUI property wrappers (State, Binding, etc.) are defined there
-        let modulesToQuery = protocolVisitor.importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
+        let modulesToQuery = importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
         propertyWrappers = await swiftInterfaceClient.getAllPropertyWrappers(fromModules: modulesToQuery)
 
-        // Merge all protocol requirements
-        for (protocolName, methods) in protocolVisitor.protocolRequirements {
-            protocolRequirements[protocolName, default: Set()].formUnion(methods)
-        }
-
-        // Second pass: collect all declarations
-        var parsedFiles: [(url: URL, source: String, sourceFile: SourceFileSyntax)] = []
-        for (index, file) in files.enumerated() {
-            printProgressBar(prefix: "Collecting declarations...", current: index + 1, total: totalFiles)
-            if let parsed = collectDeclarations(at: file) {
-                parsedFiles.append(parsed)
+        // Step 3: Collect all declarations in parallel
+        let declTracker = ProgressTracker(total: parsedFileCount, prefix: "Collecting declarations...")
+        let declarationResults: [DeclarationVisitorResult] = await withTaskGroup(of: DeclarationVisitorResult.self) { group in
+            let requirements = protocolRequirements
+            for parsed in parsedFiles {
+                group.addTask {
+                    await declTracker.increment()
+                    let visitor = DeclarationVisitor(
+                        filePath: parsed.url.path,
+                        protocolRequirements: requirements,
+                        sourceFile: parsed.sourceFile
+                    )
+                    visitor.walk(parsed.sourceFile)
+                    return DeclarationVisitorResult(
+                        declarations: visitor.declarations,
+                        typeProtocolConformance: visitor.typeProtocolConformance,
+                        typePropertyDeclarations: visitor.typePropertyDeclarations,
+                        projectPropertyWrappers: visitor.projectPropertyWrappers
+                    )
+                }
             }
+            var results: [DeclarationVisitorResult] = []
+            results.reserveCapacity(parsedFileCount)
+            for await result in group {
+                results.append(result)
+            }
+            return results
         }
-        print("")
+        await declTracker.finish()
+
+        // Merge declaration results
+        mergeDeclarationResults(declarationResults)
 
         // Post-process: mark enum cases belonging to CaseIterable enums
         markCaseIterableEnumCases()
 
-        // Third pass: collect all usage
+        // Step 4: Collect usage and write-only info in parallel (combined per-file)
         let knownTypeNames = Set(declarations.filter { $0.type == .class }.map(\.name))
-        for (index, file) in files.enumerated() {
-            printProgressBar(prefix: "Collecting usage...", current: index + 1, total: totalFiles)
-            collectUsage(at: file, knownTypeNames: knownTypeNames)
-        }
-        print("")
+        let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
+        let allTypePropertyDeclarations = typePropertyDeclarations
 
-        // Fourth pass: detect write-only variables
+        let usageTracker = ProgressTracker(total: parsedFileCount, prefix: "Collecting usage...")
+        let combinedResults: [(usage: UsageVisitorResult, writeOnly: WriteOnlyVisitorResult)] = await withTaskGroup(
+            of: (UsageVisitorResult, WriteOnlyVisitorResult).self
+        ) { group in
+            for parsed in parsedFiles {
+                group.addTask {
+                    await usageTracker.increment()
+
+                    // Usage visitor
+                    let usageVisitor = UsageVisitor(knownTypeNames: knownTypeNames)
+                    usageVisitor.walk(parsed.sourceFile)
+                    let usageResult = UsageVisitorResult(
+                        usedIdentifiers: usageVisitor.usedIdentifiers,
+                        qualifiedMemberUsages: usageVisitor.qualifiedMemberUsages,
+                        unqualifiedMemberUsages: usageVisitor.unqualifiedMemberUsages,
+                        bareIdentifierUsages: usageVisitor.bareIdentifierUsages
+                    )
+
+                    // Write-only visitor (runs on the same AST in the same task)
+                    let writeOnlyVisitor = WriteOnlyVariableVisitor(
+                        filePath: parsed.url.path,
+                        typeProperties: allTypePropertyDeclarations,
+                        propertyWrappers: allPropertyWrappers
+                    )
+                    writeOnlyVisitor.walk(parsed.sourceFile)
+                    let writeOnlyResult = WriteOnlyVisitorResult(
+                        propertyReads: writeOnlyVisitor.propertyReads,
+                        propertyWrites: writeOnlyVisitor.propertyWrites
+                    )
+
+                    return (usageResult, writeOnlyResult)
+                }
+            }
+            var results: [(UsageVisitorResult, WriteOnlyVisitorResult)] = []
+            results.reserveCapacity(parsedFileCount)
+            for await result in group {
+                results.append(result)
+            }
+            return results
+        }
+        await usageTracker.finish()
+
+        // Merge usage and write-only results
         var allPropertyReads: Set<PropertyInfo> = []
         var allPropertyWrites: Set<PropertyInfo> = []
-        for (index, parsed) in parsedFiles.enumerated() {
-            printProgressBar(prefix: "Detecting write-only...", current: index + 1, total: parsedFiles.count)
-            let (reads, writes) = collectWriteOnlyInfo(
-                at: parsed.url,
-                source: parsed.source,
-                sourceFile: parsed.sourceFile
-            )
-            allPropertyReads.formUnion(reads)
-            allPropertyWrites.formUnion(writes)
+        for (usageResult, writeOnlyResult) in combinedResults {
+            usedIdentifiers.formUnion(usageResult.usedIdentifiers)
+            qualifiedMemberUsages.formUnion(usageResult.qualifiedMemberUsages)
+            unqualifiedMemberUsages.formUnion(usageResult.unqualifiedMemberUsages)
+            bareIdentifierUsages.formUnion(usageResult.bareIdentifierUsages)
+            allPropertyReads.formUnion(writeOnlyResult.propertyReads)
+            allPropertyWrites.formUnion(writeOnlyResult.propertyWrites)
         }
-        print("")
 
         writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
 
@@ -114,69 +239,59 @@ class SwiftAnalyzer {
         ReportService.display(report: report)
     }
 
-    private func collectProtocols(at url: URL, using visitor: ProtocolVisitor) {
-        guard let source = try? String(contentsOf: url, encoding: .utf8) else { return }
-
-        let sourceFile = Parser.parse(source: source)
-        visitor.walk(sourceFile)
+    private func mergeProtocolResults(_ results: [ProtocolVisitorResult]) {
+        for result in results {
+            for (protocolName, methods) in result.protocolRequirements {
+                protocolRequirements[protocolName, default: Set()].formUnion(methods)
+            }
+            for (protocolName, parents) in result.protocolInheritance {
+                protocolInheritance[protocolName, default: Set()].formUnion(parents)
+            }
+            projectDefinedProtocols.formUnion(result.projectDefinedProtocols)
+            importedModules.formUnion(result.importedModules)
+            conformedProtocols.formUnion(result.conformedProtocols)
+        }
     }
 
-    private func collectDeclarations(at url: URL) -> (url: URL, source: String, sourceFile: SourceFileSyntax)? {
-        guard let source = try? String(contentsOf: url, encoding: .utf8) else {
-            print("Error reading file: \(url.path)".red.bold)
-            return nil
+    private func mergeDeclarationResults(_ results: [DeclarationVisitorResult]) {
+        for result in results {
+            declarations.append(contentsOf: result.declarations)
+            for (typeName, protocols) in result.typeProtocolConformance {
+                typeProtocolConformance[typeName, default: Set()].formUnion(protocols)
+            }
+            for (typeName, properties) in result.typePropertyDeclarations {
+                typePropertyDeclarations[typeName, default: []].append(contentsOf: properties)
+            }
+            projectPropertyWrappers.formUnion(result.projectPropertyWrappers)
         }
+    }
 
-        let sourceFile = Parser.parse(source: source)
-        let visitor = DeclarationVisitor(
-            filePath: url.path,
+    private func resolveExternalProtocols() async {
+        let resolver = ProtocolResolver(
             protocolRequirements: protocolRequirements,
-            sourceFile: sourceFile
+            protocolInheritance: protocolInheritance,
+            projectDefinedProtocols: projectDefinedProtocols,
+            importedModules: importedModules,
+            conformedProtocols: conformedProtocols,
+            swiftInterfaceClient: swiftInterfaceClient
         )
-        visitor.walk(sourceFile)
-        declarations.append(contentsOf: visitor.declarations)
-
-        // Merge type conformance information
-        for (typeName, protocols) in visitor.typeProtocolConformance {
-            typeProtocolConformance[typeName, default: Set()].formUnion(protocols)
-        }
-
-        // Merge type property declarations
-        for (typeName, properties) in visitor.typePropertyDeclarations {
-            typePropertyDeclarations[typeName, default: []].append(contentsOf: properties)
-        }
-
-        // Collect project-defined property wrappers
-        projectPropertyWrappers.formUnion(visitor.projectPropertyWrappers)
-
-        return (url: url, source: source, sourceFile: sourceFile)
+        await resolver.resolveExternalProtocols()
+        protocolRequirements = resolver.protocolRequirements
+        protocolInheritance = resolver.protocolInheritance
     }
 
-    private func collectUsage(at url: URL, knownTypeNames: Set<String>) {
-        guard let source = try? String(contentsOf: url, encoding: .utf8) else {
-            return
-        }
-
-        let sourceFile = Parser.parse(source: source)
-        let visitor = UsageVisitor(knownTypeNames: knownTypeNames)
-        visitor.walk(sourceFile)
-        usedIdentifiers.formUnion(visitor.usedIdentifiers)
-        qualifiedMemberUsages.formUnion(visitor.qualifiedMemberUsages)
-        unqualifiedMemberUsages.formUnion(visitor.unqualifiedMemberUsages)
-        bareIdentifierUsages.formUnion(visitor.bareIdentifierUsages)
-    }
-
-    private func collectWriteOnlyInfo(at url: URL, source: String, sourceFile: SourceFileSyntax) -> (reads: Set<PropertyInfo>, writes: Set<PropertyInfo>) {
-        // Combine framework property wrappers with project-defined ones
-        let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
-
-        let visitor = WriteOnlyVariableVisitor(
-            filePath: url.path,
-            typeProperties: typePropertyDeclarations,
-            propertyWrappers: allPropertyWrappers
+    private func resolveInheritedRequirements() {
+        let resolver = ProtocolResolver(
+            protocolRequirements: protocolRequirements,
+            protocolInheritance: protocolInheritance,
+            projectDefinedProtocols: projectDefinedProtocols,
+            importedModules: importedModules,
+            conformedProtocols: conformedProtocols,
+            swiftInterfaceClient: swiftInterfaceClient
         )
-        visitor.walk(sourceFile)
-        return (reads: visitor.propertyReads, writes: visitor.propertyWrites)
+        resolver.resolveInheritedRequirements()
+        protocolRequirements = resolver.protocolRequirements
+        protocolInheritance = resolver.protocolInheritance
     }
 
     private func isWriteOnlyProperty(_ declaration: Declaration) -> Bool {
@@ -192,10 +307,9 @@ class SwiftAnalyzer {
 
     private func shouldInclude(_ declaration: Declaration) -> Bool {
         guard declaration.shouldExcludeByDefault else {
-            return true // Not excluded by default, include it
+            return true
         }
 
-        // Check if user wants to include it despite default exclusion
         switch declaration.exclusionReason {
         case .override:
             return options.includeOverrides
@@ -286,7 +400,6 @@ class SwiftAnalyzer {
             shouldInclude($0)
         }
 
-        // Detect write-only variables (assigned but never read)
         let writeOnlyVariables = declarations.filter {
             $0.type == .variable &&
             isUsed($0) &&
@@ -302,7 +415,6 @@ class SwiftAnalyzer {
             )
         }
 
-        // Get excluded items (items that would be unused but are excluded by options)
         let excludedOverrides = declarations.filter {
             $0.type == .function &&
             !isUsed($0) &&
@@ -322,18 +434,15 @@ class SwiftAnalyzer {
             !options.includeObjc
         }
 
-        // Assign IDs to all items
         var currentId = 1
         let unusedAll = unusedFunctions + unusedVariables + unusedClasses + unusedEnumCases + unusedProtocols + writeOnlyVariables
 
-        // Create report items for unused declarations
         var unusedItems: [ReportItem] = []
         for declaration in unusedAll {
             unusedItems.append(ReportItem(id: currentId, declaration: declaration))
             currentId += 1
         }
 
-        // Create report items for excluded declarations
         var excludedOverrideItems: [ReportItem] = []
         for declaration in excludedOverrides {
             excludedOverrideItems.append(ReportItem(id: currentId, declaration: declaration))
@@ -352,8 +461,6 @@ class SwiftAnalyzer {
             currentId += 1
         }
 
-        let testFileCount = countExcludedTestFiles()
-
         let excludedItems = ExcludedItems(
             overrides: excludedOverrideItems,
             protocolImplementations: excludedProtocolItems,
@@ -364,11 +471,11 @@ class SwiftAnalyzer {
             unused: unusedItems,
             excluded: excludedItems,
             options: ReportOptions(from: options),
-            testFilesExcluded: testFileCount
+            testFilesExcluded: excludedTestFileCount
         )
     }
 
-    private func getDependencyProtocolFiles(in directory: String) -> [URL] {
+    func getDependencyProtocolFiles(in directory: String) -> [URL] {
         let directoryURL = URL(fileURLWithPath: directory)
         let checkoutsURL = directoryURL.appendingPathComponent(".build/checkouts")
         let fileManager = FileManager.default
@@ -390,9 +497,8 @@ class SwiftAnalyzer {
                 continue
             }
 
-            // Only parse files that actually contain protocol definitions
-            guard let contents = try? String(contentsOf: element, encoding: .utf8),
-                  contents.contains("protocol ") else {
+            guard let content = try? String(contentsOf: element, encoding: .utf8),
+                  content.contains("protocol ") else {
                 continue
             }
 
@@ -400,28 +506,6 @@ class SwiftAnalyzer {
         }
 
         return protocolFiles
-    }
-
-    private func countExcludedTestFiles() -> Int {
-        guard !options.includeTests else { return 0 }
-
-        let directoryURL = URL(fileURLWithPath: directory)
-        let fileManager = FileManager.default
-
-        guard let enumerator = fileManager.enumerator(at: directoryURL, includingPropertiesForKeys: nil) else {
-            return 0
-        }
-
-        var count = 0
-        while let element = enumerator.nextObject() as? URL {
-            if !element.pathComponents.contains(".build") && element.pathExtension == "swift" {
-                if isTestFile(element) {
-                    count += 1
-                }
-            }
-        }
-
-        return count
     }
 
 }

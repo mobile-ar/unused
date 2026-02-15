@@ -61,9 +61,9 @@ struct Analyze: AsyncParsableCommand {
 
         let spinner = ConsoleSpinner()
         await spinner.start(message: "Scanning for Swift files...")
-        let swiftFiles = await getSwiftFiles(in: directoryURL, includeTests: includeTests)
+        let directoryResult = await getSwiftFiles(in: directoryURL, includeTests: includeTests)
         await spinner.stop(success: true)
-        print("Found \(swiftFiles.count) Swift files".teal)
+        print("Found \(directoryResult.files.count) Swift files".teal)
 
         let options = AnalyzerOptions(
             includeOverrides: includeOverrides,
@@ -72,8 +72,12 @@ struct Analyze: AsyncParsableCommand {
             showExcluded: showExcluded,
             includeTests: includeTests
         )
-        let analyzer = SwiftAnalyzer(options: options, directory: directory)
-        await analyzer.analyzeFiles(swiftFiles)
+        let analyzer = SwiftAnalyzer(
+            options: options,
+            directory: directory,
+            excludedTestFileCount: directoryResult.excludedTestFileCount
+        )
+        await analyzer.analyzeFiles(directoryResult.files)
 
         let endTime = CFAbsoluteTimeGetCurrent()
         let totalTime = endTime - startTime

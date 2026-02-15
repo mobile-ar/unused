@@ -12,6 +12,18 @@ struct ProtocolVisitorTests {
     /// Shared SwiftInterfaceClient for resolving external protocol requirements
     private let swiftInterfaceClient = SwiftInterfaceClient()
 
+    private func makeResolver(from visitor: ProtocolVisitor) -> ProtocolResolver {
+        let result = visitor.result
+        return ProtocolResolver(
+            protocolRequirements: result.protocolRequirements,
+            protocolInheritance: result.protocolInheritance,
+            projectDefinedProtocols: result.projectDefinedProtocols,
+            importedModules: result.importedModules,
+            conformedProtocols: result.conformedProtocols,
+            swiftInterfaceClient: swiftInterfaceClient
+        )
+    }
+
     @Test
     func testProjectDefinedProtocol() async throws {
         let source = """
@@ -24,11 +36,12 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements.keys.contains("MyProtocol"))
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myProperty") == true)
+        #expect(resolver.protocolRequirements.keys.contains("MyProtocol"))
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("myProperty") == true)
     }
 
     @Test
@@ -44,12 +57,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
-        #expect(visitor.protocolRequirements["Equatable"] != nil)
+        #expect(resolver.protocolRequirements["Equatable"] != nil)
     }
 
     @Test
@@ -68,12 +82,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
-        #expect(visitor.protocolRequirements["Equatable"] != nil)
+        #expect(resolver.protocolRequirements["Equatable"] != nil)
     }
 
     @Test
@@ -103,12 +118,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
-        #expect(visitor.protocolRequirements["Codable"] != nil)
+        #expect(resolver.protocolRequirements["Codable"] != nil)
     }
 
     @Test
@@ -121,12 +137,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // Identifiable is resolved via SourceKit
-        #expect(visitor.protocolRequirements["Identifiable"] != nil)
+        #expect(resolver.protocolRequirements["Identifiable"] != nil)
     }
 
     @Test
@@ -142,12 +159,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // CustomStringConvertible is resolved via SourceKit
-        #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
+        #expect(resolver.protocolRequirements["CustomStringConvertible"] != nil)
     }
 
     @Test
@@ -167,13 +185,14 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // External protocols are resolved via SourceKit
-        #expect(visitor.protocolRequirements["Equatable"] != nil)
-        #expect(visitor.protocolRequirements["Hashable"] != nil)
+        #expect(resolver.protocolRequirements["Equatable"] != nil)
+        #expect(resolver.protocolRequirements["Hashable"] != nil)
     }
 
     @Test
@@ -193,19 +212,20 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // Project-defined protocol should have its declared methods
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
         // Project-defined protocol should NOT have methods from the implementation
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("==") != true)
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("==") != true)
 
         // External protocol (Equatable) should be resolved separately
-        #expect(visitor.protocolRequirements["Equatable"] != nil)
+        #expect(resolver.protocolRequirements["Equatable"] != nil)
         // External protocol should NOT have project protocol methods mixed in
-        #expect(visitor.protocolRequirements["Equatable"]?.contains("myMethod") != true)
+        #expect(resolver.protocolRequirements["Equatable"]?.contains("myMethod") != true)
     }
 
     @Test
@@ -218,12 +238,13 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // CaseIterable is resolved via SourceKit
-        #expect(visitor.protocolRequirements["CaseIterable"] != nil)
+        #expect(resolver.protocolRequirements["CaseIterable"] != nil)
     }
 
     @Test
@@ -241,9 +262,10 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements.isEmpty)
+        #expect(resolver.protocolRequirements.isEmpty)
     }
 
     @Test
@@ -261,16 +283,17 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
         // All external protocols should be tracked
-        #expect(visitor.protocolRequirements["Equatable"] != nil)
-        #expect(visitor.protocolRequirements["Hashable"] != nil)
-        #expect(visitor.protocolRequirements["Codable"] != nil)
-        #expect(visitor.protocolRequirements["Identifiable"] != nil)
-        #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
+        #expect(resolver.protocolRequirements["Equatable"] != nil)
+        #expect(resolver.protocolRequirements["Hashable"] != nil)
+        #expect(resolver.protocolRequirements["Codable"] != nil)
+        #expect(resolver.protocolRequirements["Identifiable"] != nil)
+        #expect(resolver.protocolRequirements["CustomStringConvertible"] != nil)
     }
 
     @Test
@@ -286,11 +309,12 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["DataProvider"]?.contains("data") == true)
-        #expect(visitor.protocolRequirements["DataProvider"]?.contains("count") == true)
-        #expect(visitor.protocolRequirements["DataProvider"]?.contains("refresh") == true)
+        #expect(resolver.protocolRequirements["DataProvider"]?.contains("data") == true)
+        #expect(resolver.protocolRequirements["DataProvider"]?.contains("count") == true)
+        #expect(resolver.protocolRequirements["DataProvider"]?.contains("refresh") == true)
     }
 
     @Test
@@ -304,9 +328,10 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["Indexable"]?.contains("subscript") == true)
+        #expect(resolver.protocolRequirements["Indexable"]?.contains("subscript") == true)
     }
 
     @Test
@@ -321,9 +346,10 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["Constructible"]?.contains("init") == true)
+        #expect(resolver.protocolRequirements["Constructible"]?.contains("init") == true)
     }
 
     @Test
@@ -340,12 +366,13 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("property") == true)
-        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("method") == true)
-        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("subscript") == true)
-        #expect(visitor.protocolRequirements["FullProtocol"]?.contains("init") == true)
+        #expect(resolver.protocolRequirements["FullProtocol"]?.contains("property") == true)
+        #expect(resolver.protocolRequirements["FullProtocol"]?.contains("method") == true)
+        #expect(resolver.protocolRequirements["FullProtocol"]?.contains("subscript") == true)
+        #expect(resolver.protocolRequirements["FullProtocol"]?.contains("init") == true)
     }
 
     @Test
@@ -363,11 +390,12 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["Identifiable"]?.contains("id") == true)
+        #expect(resolver.protocolRequirements["Identifiable"]?.contains("id") == true)
     }
 
     @Test
@@ -383,11 +411,12 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolRequirements["CustomStringConvertible"] != nil)
+        #expect(resolver.protocolRequirements["CustomStringConvertible"] != nil)
     }
 
     @Test
@@ -406,12 +435,13 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
 
-        #expect(visitor.protocolInheritance["ChildProtocol"]?.contains("ParentProtocol") == true)
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        #expect(resolver.protocolInheritance["ChildProtocol"]?.contains("ParentProtocol") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
         // Before resolving inherited requirements, ChildProtocol only has its own direct requirements
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") != true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("parentMethod") != true)
     }
 
     @Test
@@ -430,17 +460,18 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
         // After resolving, ChildProtocol should include ParentProtocol requirements
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentProperty") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("parentProperty") == true)
 
         // ParentProtocol should still have its own requirements unchanged
-        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
-        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentProperty") == true)
+        #expect(resolver.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
+        #expect(resolver.protocolRequirements["ParentProtocol"]?.contains("parentProperty") == true)
     }
 
     @Test
@@ -462,17 +493,18 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
         // ChildProtocol should have requirements from all ancestors
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
-        #expect(visitor.protocolRequirements["ChildProtocol"]?.contains("configuration") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("childMethod") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("parentMethod") == true)
+        #expect(resolver.protocolRequirements["ChildProtocol"]?.contains("configuration") == true)
 
         // ParentProtocol should have its own + GrandparentProtocol requirements
-        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
-        #expect(visitor.protocolRequirements["ParentProtocol"]?.contains("configuration") == true)
+        #expect(resolver.protocolRequirements["ParentProtocol"]?.contains("parentMethod") == true)
+        #expect(resolver.protocolRequirements["ParentProtocol"]?.contains("configuration") == true)
     }
 
     @Test
@@ -494,14 +526,15 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
-        #expect(visitor.protocolInheritance["ProtocolC"]?.contains("ProtocolA") == true)
-        #expect(visitor.protocolInheritance["ProtocolC"]?.contains("ProtocolB") == true)
-        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("methodC") == true)
-        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("methodA") == true)
-        #expect(visitor.protocolRequirements["ProtocolC"]?.contains("propertyB") == true)
+        #expect(resolver.protocolInheritance["ProtocolC"]?.contains("ProtocolA") == true)
+        #expect(resolver.protocolInheritance["ProtocolC"]?.contains("ProtocolB") == true)
+        #expect(resolver.protocolRequirements["ProtocolC"]?.contains("methodC") == true)
+        #expect(resolver.protocolRequirements["ProtocolC"]?.contains("methodA") == true)
+        #expect(resolver.protocolRequirements["ProtocolC"]?.contains("propertyB") == true)
     }
 
     @Test
@@ -518,14 +551,15 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
         // MyProtocol should inherit Equatable's requirements
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
-        #expect(visitor.protocolRequirements["MyProtocol"]?.contains("==") == true)
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("myMethod") == true)
+        #expect(resolver.protocolRequirements["MyProtocol"]?.contains("==") == true)
     }
 
     @Test
@@ -539,12 +573,13 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
-        #expect(visitor.protocolRequirements["StandaloneProtocol"]?.contains("doSomething") == true)
-        #expect(visitor.protocolRequirements["StandaloneProtocol"]?.count == 1)
-        #expect(visitor.protocolInheritance["StandaloneProtocol"] == nil)
+        #expect(resolver.protocolRequirements["StandaloneProtocol"]?.contains("doSomething") == true)
+        #expect(resolver.protocolRequirements["StandaloneProtocol"]?.count == 1)
+        #expect(resolver.protocolInheritance["StandaloneProtocol"] == nil)
     }
 
     @Test
@@ -570,18 +605,19 @@ struct ProtocolVisitorTests {
         let sourceFile = Parser.parse(source: source)
         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
         // Leaf should have all requirements from the diamond
-        #expect(visitor.protocolRequirements["Leaf"]?.contains("leafMethod") == true)
-        #expect(visitor.protocolRequirements["Leaf"]?.contains("methodA") == true)
-        #expect(visitor.protocolRequirements["Leaf"]?.contains("methodB") == true)
-        #expect(visitor.protocolRequirements["Leaf"]?.contains("id") == true)
+        #expect(resolver.protocolRequirements["Leaf"]?.contains("leafMethod") == true)
+        #expect(resolver.protocolRequirements["Leaf"]?.contains("methodA") == true)
+        #expect(resolver.protocolRequirements["Leaf"]?.contains("methodB") == true)
+        #expect(resolver.protocolRequirements["Leaf"]?.contains("id") == true)
 
         // Both branches should have Root's id
-        #expect(visitor.protocolRequirements["BranchA"]?.contains("id") == true)
-        #expect(visitor.protocolRequirements["BranchB"]?.contains("id") == true)
+        #expect(resolver.protocolRequirements["BranchA"]?.contains("id") == true)
+        #expect(resolver.protocolRequirements["BranchB"]?.contains("id") == true)
     }
 
     @Test
@@ -602,13 +638,99 @@ struct ProtocolVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let visitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
         visitor.walk(sourceFile)
-        await visitor.resolveExternalProtocols()
-        visitor.resolveInheritedRequirements()
+        let resolver = makeResolver(from: visitor)
+        await resolver.resolveExternalProtocols()
+        resolver.resolveInheritedRequirements()
 
         // Hashable should include Equatable's requirements after resolution
-        #expect(visitor.protocolRequirements["Hashable"]?.contains("hash") == true)
-        #expect(visitor.protocolRequirements["Hashable"]?.contains("==") == true)
+        #expect(resolver.protocolRequirements["Hashable"]?.contains("hash") == true)
+        #expect(resolver.protocolRequirements["Hashable"]?.contains("==") == true)
+    }
+
+    @Test
+    func testVisitorResultContainsConformedProtocols() {
+        let source = """
+        protocol MyProtocol {
+            func doSomething()
+        }
+
+        struct MyStruct: MyProtocol, Equatable {
+            func doSomething() {}
+            static func == (lhs: MyStruct, rhs: MyStruct) -> Bool { true }
+        }
+
+        class MyClass: Hashable {
+            func hash(into hasher: inout Hasher) {}
+            static func == (lhs: MyClass, rhs: MyClass) -> Bool { true }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.conformedProtocols.contains("MyProtocol"))
+        #expect(result.conformedProtocols.contains("Equatable"))
+        #expect(result.conformedProtocols.contains("Hashable"))
+        #expect(result.projectDefinedProtocols.contains("MyProtocol"))
+        #expect(!result.projectDefinedProtocols.contains("Equatable"))
+    }
+
+    @Test
+    func testVisitorResultContainsImportedModules() {
+        let source = """
+        import Foundation
+        import SwiftUI
+
+        protocol MyProtocol {}
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.importedModules.contains("Foundation"))
+        #expect(result.importedModules.contains("SwiftUI"))
+    }
+
+    @Test
+    func testProtocolResolverMergesMultipleResults() async throws {
+        let source1 = """
+        protocol ProtocolA {
+            func methodA()
+        }
+        """
+
+        let source2 = """
+        protocol ProtocolB {
+            func methodB()
+        }
+
+        struct MyStruct: ProtocolA, ProtocolB {
+            func methodA() {}
+            func methodB() {}
+        }
+        """
+
+        let sourceFile1 = Parser.parse(source: source1)
+        let visitor1 = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor1.walk(sourceFile1)
+
+        let sourceFile2 = Parser.parse(source: source2)
+        let visitor2 = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor2.walk(sourceFile2)
+
+        let resolver = ProtocolResolver(
+            mergedResults: [visitor1.result, visitor2.result],
+            swiftInterfaceClient: swiftInterfaceClient
+        )
+        await resolver.resolveExternalProtocols()
+
+        #expect(resolver.protocolRequirements["ProtocolA"]?.contains("methodA") == true)
+        #expect(resolver.protocolRequirements["ProtocolB"]?.contains("methodB") == true)
     }
 }

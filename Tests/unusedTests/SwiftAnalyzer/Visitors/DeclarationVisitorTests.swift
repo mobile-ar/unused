@@ -12,6 +12,23 @@ struct DeclarationVisitorTests {
     /// Shared SwiftInterfaceClient for resolving external protocol requirements
     private let swiftInterfaceClient = SwiftInterfaceClient()
 
+    private func resolvedRequirements(from visitor: ProtocolVisitor, resolveInherited: Bool = false) async -> [String: Set<String>] {
+        let result = visitor.result
+        let resolver = ProtocolResolver(
+            protocolRequirements: result.protocolRequirements,
+            protocolInheritance: result.protocolInheritance,
+            projectDefinedProtocols: result.projectDefinedProtocols,
+            importedModules: result.importedModules,
+            conformedProtocols: result.conformedProtocols,
+            swiftInterfaceClient: swiftInterfaceClient
+        )
+        await resolver.resolveExternalProtocols()
+        if resolveInherited {
+            resolver.resolveInheritedRequirements()
+        }
+        return resolver.protocolRequirements
+    }
+
     @Test
     func testProjectPropertyWrapperDetectionForStruct() async throws {
         let source = """
@@ -22,7 +39,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -49,7 +66,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -81,7 +98,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -114,7 +131,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -148,7 +165,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -177,13 +194,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -212,13 +229,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -250,13 +267,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -285,13 +302,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -330,13 +347,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -368,13 +385,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -400,13 +417,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -432,13 +449,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -469,13 +486,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -502,13 +519,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -532,7 +549,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -569,13 +586,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -601,7 +618,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -634,13 +651,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -665,7 +682,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -698,13 +715,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -735,13 +752,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
+        let requirements = await resolvedRequirements(from: protocolVisitor)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -769,7 +786,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -799,7 +816,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -824,7 +841,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -852,7 +869,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -889,14 +906,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
-        protocolVisitor.resolveInheritedRequirements()
+        let requirements = await resolvedRequirements(from: protocolVisitor, resolveInherited: true)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -933,14 +949,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
-        protocolVisitor.resolveInheritedRequirements()
+        let requirements = await resolvedRequirements(from: protocolVisitor, resolveInherited: true)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -973,14 +988,14 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
-        // Intentionally NOT calling resolveInheritedRequirements()
+        // Intentionally NOT calling resolveInherited to test without inheritance resolution
+        let requirements = await resolvedRequirements(from: protocolVisitor, resolveInherited: false)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -1024,14 +1039,13 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
-        await protocolVisitor.resolveExternalProtocols()
-        protocolVisitor.resolveInheritedRequirements()
+        let requirements = await resolvedRequirements(from: protocolVisitor, resolveInherited: true)
 
         let visitor = DeclarationVisitor(
             filePath: "/test/file.swift",
-            protocolRequirements: protocolVisitor.protocolRequirements,
+            protocolRequirements: requirements,
             sourceFile: sourceFile
         )
         visitor.walk(sourceFile)
@@ -1064,7 +1078,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1095,7 +1109,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1123,7 +1137,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1149,7 +1163,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1179,7 +1193,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1205,7 +1219,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1237,7 +1251,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1271,7 +1285,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1298,7 +1312,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1323,7 +1337,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1358,7 +1372,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1387,7 +1401,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1426,7 +1440,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1462,7 +1476,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1488,7 +1502,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(
@@ -1518,7 +1532,7 @@ struct DeclarationVisitorTests {
         """
 
         let sourceFile = Parser.parse(source: source)
-        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate, swiftInterfaceClient: swiftInterfaceClient)
+        let protocolVisitor = ProtocolVisitor(viewMode: .sourceAccurate)
         protocolVisitor.walk(sourceFile)
 
         let visitor = DeclarationVisitor(

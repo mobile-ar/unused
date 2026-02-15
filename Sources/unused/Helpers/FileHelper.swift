@@ -3,24 +3,29 @@
 //
 
 import Foundation
-import SwiftParser
-import SwiftSyntax
 
-func getSwiftFiles(in directory: URL, includeTests: Bool = false) async -> [URL] {
+struct SwiftFileDiscoveryResult: Sendable {
+    let files: [URL]
+    let excludedTestFileCount: Int
+}
+
+func getSwiftFiles(in directory: URL, includeTests: Bool = false) async -> SwiftFileDiscoveryResult {
     var swiftFiles = [URL]()
+    var excludedTestCount = 0
     let fileManager = FileManager.default
     let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil)
 
     while let element = enumerator?.nextObject() as? URL {
         if !element.pathComponents.contains(".build") && element.pathExtension == "swift" {
             if !includeTests && isTestFile(element) {
+                excludedTestCount += 1
                 continue
             }
             swiftFiles.append(element)
         }
     }
 
-    return swiftFiles
+    return SwiftFileDiscoveryResult(files: swiftFiles, excludedTestFileCount: excludedTestCount)
 }
 
 func isTestFile(_ url: URL) -> Bool {
@@ -30,17 +35,26 @@ func isTestFile(_ url: URL) -> Bool {
 
     if fileName.contains("Test") || fileName.contains("Tests") { return true }
 
-    // Parse file with swift-syntax to check for test framework imports
     guard let source = try? String(contentsOf: url, encoding: .utf8) else { return false }
 
-    let sourceFile = Parser.parse(source: source)
+    return sourceContainsTestImport(source)
+}
 
-    for statement in sourceFile.statements {
-        if let importDecl = statement.item.as(ImportDeclSyntax.self) {
-            let moduleName = importDecl.path.trimmedDescription
-            if moduleName == "XCTest" || moduleName == "Testing" {
-                return true
-            }
+func sourceContainsTestImport(_ source: String) -> Bool {
+    for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+        let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+
+        if trimmed.isEmpty || trimmed.hasPrefix("//") || trimmed.hasPrefix("/*") || trimmed.hasPrefix("*") {
+            continue
+        }
+
+        let isImportLine = trimmed.hasPrefix("import ") || trimmed.hasPrefix("@testable ") || trimmed.hasPrefix("@_exported ")
+        guard isImportLine else {
+            break
+        }
+
+        if trimmed.hasSuffix("XCTest") || trimmed.hasSuffix("Testing") {
+            return true
         }
     }
 
