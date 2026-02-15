@@ -196,7 +196,7 @@ struct InstallCompletionsHelper {
         let completionsDir = "\(homeDir)/.config/fish/completions"
         let completionFile = "\(completionsDir)/unused.fish"
 
-        cleanupExistingFishCompletions(homeDir: homeDir, targetPath: completionFile)
+        cleanupExistingFishCompletions(homeDir: homeDir)
 
         try fileManager.createDirectory(atPath: completionsDir, withIntermediateDirectories: true)
 
@@ -247,7 +247,7 @@ struct InstallCompletionsHelper {
         }
     }
 
-    private func cleanupExistingFishCompletions(homeDir: String, targetPath: String) {
+    private func cleanupExistingFishCompletions(homeDir: String) {
         let knownPaths = [
             "\(homeDir)/.config/fish/completions/unused.fish",
             "/usr/local/share/fish/vendor_completions.d/unused.fish",

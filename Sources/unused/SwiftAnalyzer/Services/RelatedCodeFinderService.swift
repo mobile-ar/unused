@@ -13,7 +13,7 @@ struct RelatedCodeFinderService {
         case .variable:
             return try await findPropertyRelatedCode(item)
         case .function:
-            return try findFunctionRelatedCode(item)
+            return []
         case .class:
             return try await findTypeRelatedCode(item)
         case .enumCase:
@@ -150,10 +150,6 @@ struct RelatedCodeFinderService {
         }
 
         return relatedDeletions
-    }
-
-    private func findFunctionRelatedCode(_ item: ReportItem) throws -> [RelatedDeletion] {
-        return []
     }
 
     private func findTypeRelatedCode(_ item: ReportItem) async throws -> [RelatedDeletion] {

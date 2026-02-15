@@ -198,7 +198,7 @@ struct InteractiveDeleteService {
 
             printOptions(for: "declaration/s", displayingLineRange: true)
 
-            let response = parseResponse(inputProvider.readLine(), validLineRange: extractedCode.startLine...extractedCode.endLine)
+            let response = parseResponse(inputProvider.readLine())
 
             switch response {
             case .yes:
@@ -232,7 +232,7 @@ struct InteractiveDeleteService {
         }
     }
 
-    private func parseResponse(_ input: String?, validLineRange: ClosedRange<Int>) -> InteractiveResponse {
+    private func parseResponse(_ input: String?) -> InteractiveResponse {
         let commonResponse = parseCommonResponse(input)
         if commonResponse != .no || input?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
             return commonResponse
