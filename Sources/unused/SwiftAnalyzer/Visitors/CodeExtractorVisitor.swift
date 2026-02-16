@@ -136,6 +136,32 @@ final class CodeExtractorVisitor: SyntaxVisitor {
         return extractedCode == nil ? .visitChildren : .skipChildren
     }
 
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+        let lineNumber = getLineNumber(for: node)
+        let moduleName = node.path.first?.name.text ?? node.path.trimmedDescription
+
+        guard target.name == moduleName && target.line == lineNumber && target.type == .import else {
+            return extractedCode == nil ? .visitChildren : .skipChildren
+        }
+
+        let endLine = getEndLineNumber(for: node)
+        let sourceText = node.trimmedDescription
+
+        extractedCode = ExtractedCode(
+            sourceText: sourceText,
+            startLine: lineNumber,
+            endLine: endLine
+        )
+
+        return .skipChildren
+    }
+
+    override func visit(_ node: TypeAliasDeclSyntax) -> SyntaxVisitorContinueKind {
+        let lineNumber = getLineNumber(for: node)
+        extractIfMatches(name: node.name.identifierName, line: lineNumber, type: .typealias, node: node)
+        return extractedCode == nil ? .visitChildren : .skipChildren
+    }
+
     static func extractCode(for item: ReportItem) throws -> ExtractedCode? {
         let source = try String(contentsOfFile: item.file, encoding: .utf8)
         let sourceFile = Parser.parse(source: source)

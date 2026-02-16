@@ -397,6 +397,179 @@ struct CodeExtractorVisitorTests {
         #expect(visitor.extractedCode == nil)
     }
 
+    @Test func testExtractImport() throws {
+        let source = """
+        import Foundation
+        import UIKit
+        import SwiftUI
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "UIKit", line: 2, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 2)
+        #expect(extracted?.endLine == 2)
+        #expect(extracted?.sourceText.contains("import UIKit") == true)
+        #expect(extracted?.sourceText.contains("import Foundation") == false)
+        #expect(extracted?.sourceText.contains("import SwiftUI") == false)
+    }
+
+    @Test func testExtractImportFirst() throws {
+        let source = """
+        import Foundation
+
+        func hello() {}
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "Foundation", line: 1, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 1)
+        #expect(extracted?.endLine == 1)
+        #expect(extracted?.sourceText.contains("import Foundation") == true)
+    }
+
+    @Test func testExtractImportNonExistent() throws {
+        let source = """
+        import Foundation
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "UIKit", line: 1, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
+    @Test func testExtractImportWithFileHeader() throws {
+        let source = """
+        //
+        //  MyClass.swift
+        //  Created by Someone on 2026-01-01.
+        //
+
+        import Foundation
+        import UIKit
+        import SwiftUI
+
+        class MyClass {}
+        """
+
+        let sourceFile = Parser.parse(source: source)
+
+        let target = DeletionTarget(name: "Foundation", line: 6, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 6)
+        #expect(extracted?.endLine == 6)
+        #expect(extracted?.sourceText.contains("import Foundation") == true)
+        #expect(extracted?.sourceText.contains("MyClass") == false)
+        #expect(extracted?.sourceText.contains("Created by") == false)
+    }
+
+    @Test func testExtractImportWithFileHeaderDoesNotDeleteHeader() throws {
+        let source = """
+        //
+        //  MyClass.swift
+        //  Created by Someone on 2026-01-01.
+        //
+
+        import Foundation
+        import UIKit
+
+        class MyClass {}
+        """
+
+        let sourceFile = Parser.parse(source: source)
+
+        let target = DeletionTarget(name: "UIKit", line: 7, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 7)
+        #expect(extracted?.endLine == 7)
+        #expect(extracted?.sourceText.contains("import UIKit") == true)
+        #expect(extracted?.sourceText.contains("Foundation") == false)
+    }
+
+    @Test func testExtractImportWrongLine() throws {
+        let source = """
+        import Foundation
+        import UIKit
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "Foundation", line: 2, type: .import)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
+    @Test func testExtractTypealias() throws {
+        let source = """
+        typealias StringDictionary = Dictionary<String, String>
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "StringDictionary", line: 1, type: .typealias)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 1)
+        #expect(extracted?.endLine == 1)
+        #expect(extracted?.sourceText.contains("typealias StringDictionary") == true)
+    }
+
+    @Test func testExtractTypealiasNested() throws {
+        let source = """
+        struct Container {
+            typealias Handler = (Int) -> Void
+            var value: Int = 0
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "Handler", line: 2, type: .typealias)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        let extracted = visitor.extractedCode
+        #expect(extracted != nil)
+        #expect(extracted?.startLine == 2)
+        #expect(extracted?.endLine == 2)
+        #expect(extracted?.sourceText.contains("typealias Handler") == true)
+    }
+
+    @Test func testExtractTypealiasNonExistent() throws {
+        let source = """
+        typealias Existing = String
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let target = DeletionTarget(name: "NonExistent", line: 1, type: .typealias)
+        let visitor = CodeExtractorVisitor(target: target, sourceFile: sourceFile, fileName: "test.swift")
+        visitor.walk(sourceFile)
+
+        #expect(visitor.extractedCode == nil)
+    }
+
     @Test func testExtractWithMultipleEmptyLines() throws {
         let source = """
         class Container {

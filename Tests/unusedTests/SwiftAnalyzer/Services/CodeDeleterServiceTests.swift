@@ -1103,4 +1103,368 @@ struct CodeDeleterServiceTests {
         #expect(FileManager.default.fileExists(atPath: filePath1) == false)
         #expect(FileManager.default.fileExists(atPath: filePath2) == true)
     }
+
+    @Test func testDeleteUnusedImport() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import Foundation
+        import UIKit
+        import SwiftUI
+
+        class MyClass {
+            func doSomething() {
+                print("hello")
+            }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "UIKit",
+                type: .import,
+                file: filePath,
+                line: 2,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import UIKit"))
+        #expect(modifiedContent.contains("import Foundation"))
+        #expect(modifiedContent.contains("import SwiftUI"))
+        #expect(modifiedContent.contains("class MyClass"))
+    }
+
+    @Test func testDeleteMultipleUnusedImports() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import Foundation
+        import UIKit
+        import SwiftUI
+        import Combine
+
+        struct MyView {
+            var body: String { "hello" }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "UIKit",
+                type: .import,
+                file: filePath,
+                line: 2,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 2,
+                name: "Combine",
+                type: .import,
+                file: filePath,
+                line: 4,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 2)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import UIKit"))
+        #expect(!modifiedContent.contains("import Combine"))
+        #expect(modifiedContent.contains("import Foundation"))
+        #expect(modifiedContent.contains("import SwiftUI"))
+        #expect(modifiedContent.contains("struct MyView"))
+    }
+
+    @Test func testDeleteImportUsingDeletionRequests() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import Foundation
+        import UIKit
+
+        func hello() {
+            print("world")
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "Test.swift", content: sourceCode)
+
+        let item = ReportItem(
+            id: 1,
+            name: "UIKit",
+            type: .import,
+            file: filePath,
+            line: 2,
+            exclusionReason: .none,
+            parentType: nil
+        )
+
+        let requests = [DeletionRequest(item: item, mode: .fullDeclaration)]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(requests: requests, dryRun: false, deleteEmptyFiles: true)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import UIKit"))
+        #expect(modifiedContent.contains("import Foundation"))
+        #expect(modifiedContent.contains("func hello()"))
+    }
+    @Test func testDeleteImportPreservesFileHeader() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        //
+        //  MyClass.swift
+        //  Created by Someone on 2026-01-01.
+        //
+
+        import Foundation
+        import UIKit
+        import SwiftUI
+
+        class MyClass {
+            func doSomething() {
+                print("hello")
+            }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "MyClass.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "UIKit",
+                type: .import,
+                file: filePath,
+                line: 7,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import UIKit"))
+        #expect(modifiedContent.contains("import Foundation"))
+        #expect(modifiedContent.contains("import SwiftUI"))
+        #expect(modifiedContent.contains("class MyClass"))
+        #expect(modifiedContent.contains("//  MyClass.swift"))
+        #expect(modifiedContent.contains("//  Created by Someone on 2026-01-01."))
+    }
+
+    @Test func testDeleteFirstImportPreservesFileHeader() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        //
+        //  MyClass.swift
+        //  Created by Someone on 2026-01-01.
+        //
+
+        import Foundation
+        import UIKit
+
+        class MyClass {
+            func doSomething() {
+                print("hello")
+            }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "MyClass.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "Foundation",
+                type: .import,
+                file: filePath,
+                line: 6,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import Foundation"))
+        #expect(modifiedContent.contains("import UIKit"))
+        #expect(modifiedContent.contains("class MyClass"))
+        #expect(modifiedContent.contains("//  MyClass.swift"))
+        #expect(modifiedContent.contains("//  Created by Someone on 2026-01-01."))
+    }
+
+    @Test func testDeleteImportAtLineOne() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import AppKit
+
+        extension Comparable {
+            public func until(incl bound: Self) -> ClosedRange<Self>? { self <= bound ? self ... bound : nil }
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "ComparableEx.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "AppKit",
+                type: .import,
+                file: filePath,
+                line: 1,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import AppKit"))
+        #expect(modifiedContent.contains("extension Comparable"))
+    }
+
+    @Test func testDeleteImportAtLineOneWithMultipleImports() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceCode = """
+        import AppKit
+        import Common
+
+        struct CloseAllWindowsButCurrentCommand {
+            let args: String
+        }
+        """
+
+        let filePath = try createTempFile(in: tempDir, name: "CloseAllWindowsButCurrentCommand.swift", content: sourceCode)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "AppKit",
+                type: .import,
+                file: filePath,
+                line: 1,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 1)
+        #expect(result.successfulFiles == 1)
+
+        let modifiedContent = try String(contentsOfFile: filePath, encoding: .utf8)
+        #expect(!modifiedContent.contains("import AppKit"))
+        #expect(modifiedContent.contains("import Common"))
+        #expect(modifiedContent.contains("struct CloseAllWindowsButCurrentCommand"))
+    }
+
+    @Test func testDeleteImportAtLineOneFromMultipleFiles() async throws {
+        let tempDir = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let source1 = """
+        import AppKit
+
+        extension Comparable {}
+        """
+
+        let source2 = """
+        import Foundation
+        import AppKit
+
+        public protocol AeroAny {}
+        """
+
+        let filePath1 = try createTempFile(in: tempDir, name: "ComparableEx.swift", content: source1)
+        let filePath2 = try createTempFile(in: tempDir, name: "AeroAny.swift", content: source2)
+
+        let items = [
+            ReportItem(
+                id: 1,
+                name: "AppKit",
+                type: .import,
+                file: filePath1,
+                line: 1,
+                exclusionReason: .none,
+                parentType: nil
+            ),
+            ReportItem(
+                id: 2,
+                name: "AppKit",
+                type: .import,
+                file: filePath2,
+                line: 2,
+                exclusionReason: .none,
+                parentType: nil
+            )
+        ]
+
+        let codeDeleter = CodeDeleterService()
+        let result = await codeDeleter.delete(items: items, dryRun: false)
+
+        #expect(result.totalDeleted == 2)
+        #expect(result.successfulFiles == 2)
+
+        let modified1 = try String(contentsOfFile: filePath1, encoding: .utf8)
+        #expect(!modified1.contains("import AppKit"))
+        #expect(modified1.contains("extension Comparable"))
+
+        let modified2 = try String(contentsOfFile: filePath2, encoding: .utf8)
+        #expect(!modified2.contains("import AppKit"))
+        #expect(modified2.contains("import Foundation"))
+        #expect(modified2.contains("public protocol AeroAny"))
+    }
 }
