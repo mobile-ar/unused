@@ -13,12 +13,14 @@ struct ImportInfo: Sendable {
 struct ImportUsageResult: Sendable {
     let imports: [ImportInfo]
     let usedIdentifiers: Set<String>
+    let typeInheritances: [String: Set<String>]
 }
 
 class ImportUsageVisitor: SyntaxVisitor {
 
     private(set) var imports: [ImportInfo] = []
     private(set) var usedIdentifiers = Set<String>()
+    private(set) var typeInheritances: [String: Set<String>] = [:]
     private let filePath: String
     private let sourceLocationConverter: SourceLocationConverter
 
@@ -29,7 +31,11 @@ class ImportUsageVisitor: SyntaxVisitor {
     }
 
     var result: ImportUsageResult {
-        ImportUsageResult(imports: imports, usedIdentifiers: usedIdentifiers)
+        ImportUsageResult(
+            imports: imports,
+            usedIdentifiers: usedIdentifiers,
+            typeInheritances: typeInheritances
+        )
     }
 
     override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -41,6 +47,26 @@ class ImportUsageVisitor: SyntaxVisitor {
             filePath: filePath
         ))
         return .skipChildren
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        collectInheritance(name: node.name.text, inheritanceClause: node.inheritanceClause)
+        return .visitChildren
+    }
+
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        collectInheritance(name: node.name.text, inheritanceClause: node.inheritanceClause)
+        return .visitChildren
+    }
+
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+        collectInheritance(name: node.name.text, inheritanceClause: node.inheritanceClause)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        collectInheritance(name: node.name.text, inheritanceClause: node.inheritanceClause)
+        return .visitChildren
     }
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
@@ -94,5 +120,18 @@ class ImportUsageVisitor: SyntaxVisitor {
     override func visit(_ node: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
         usedIdentifiers.insert(node.macroName.text)
         return .visitChildren
+    }
+
+    private func collectInheritance(name: String, inheritanceClause: InheritanceClauseSyntax?) {
+        guard let clause = inheritanceClause else { return }
+        var inherited = Set<String>()
+        for inheritedType in clause.inheritedTypes {
+            if let typeName = inheritedType.type.as(IdentifierTypeSyntax.self)?.name.text {
+                inherited.insert(typeName)
+            }
+        }
+        if !inherited.isEmpty {
+            typeInheritances[name, default: []].formUnion(inherited)
+        }
     }
 }

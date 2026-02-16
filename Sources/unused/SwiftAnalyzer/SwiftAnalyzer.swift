@@ -437,6 +437,20 @@ class SwiftAnalyzer {
             }
         }
 
+        // Build a global type inheritance graph from all files so we can resolve
+        // transitive ancestors. For example if Child: Parent and Parent: UIViewController,
+        // then Child transitively depends on UIKit even if it never names UIViewController.
+        let globalInheritanceGraph = buildGlobalInheritanceGraph(importResults)
+
+        // Detect cross-file import dependencies (import leaking within the same module).
+        // If a file uses symbols from a module it does NOT import, some other file's
+        // import is providing those symbols. We must not flag that import as unused.
+        let crossFileDependentModules = findCrossFileDependentModules(
+            importResults: importResults,
+            moduleSymbolCache: moduleSymbolCache,
+            alwaysNeededModules: alwaysNeededModules
+        )
+
         // Check each file's imports against its used identifiers
         for result in importResults {
             for importInfo in result.imports {
@@ -449,9 +463,24 @@ class SwiftAnalyzer {
                     continue
                 }
 
+                // Cross-file dependency: another file uses this module's symbols
+                // without importing it, so this import may be providing them.
+                if crossFileDependentModules.contains(importInfo.moduleName) {
+                    continue
+                }
+
+                // Direct check: does the file reference any symbol exported by this module?
                 let hasUsedSymbol = !moduleSymbols.isDisjoint(with: result.usedIdentifiers)
 
-                if !hasUsedSymbol {
+                // Transitive inheritance check: does any type in this file have a
+                // transitive ancestor that belongs to this module?
+                let hasAncestorInModule = hasTransitiveAncestorInModule(
+                    typeInheritances: result.typeInheritances,
+                    globalGraph: globalInheritanceGraph,
+                    moduleSymbols: moduleSymbols
+                )
+
+                if !hasUsedSymbol && !hasAncestorInModule {
                     unusedImportDeclarations.append(Declaration(
                         name: importInfo.moduleName,
                         type: .import,
@@ -463,6 +492,64 @@ class SwiftAnalyzer {
                 }
             }
         }
+    }
+
+    func buildGlobalInheritanceGraph(_ importResults: [ImportUsageResult]) -> [String: Set<String>] {
+        var graph: [String: Set<String>] = [:]
+        for result in importResults {
+            for (typeName, parents) in result.typeInheritances {
+                graph[typeName, default: []].formUnion(parents)
+            }
+        }
+        return graph
+    }
+
+    func findCrossFileDependentModules(
+        importResults: [ImportUsageResult],
+        moduleSymbolCache: [String: Set<String>],
+        alwaysNeededModules: Set<String>
+    ) -> Set<String> {
+        var dependentModules = Set<String>()
+        for result in importResults {
+            let fileImportedModules = Set(result.imports.map(\.moduleName))
+            for (moduleName, symbols) in moduleSymbolCache {
+                if alwaysNeededModules.contains(moduleName) { continue }
+                if fileImportedModules.contains(moduleName) { continue }
+                // This file does NOT import this module but uses its symbols
+                if !symbols.isDisjoint(with: result.usedIdentifiers) {
+                    dependentModules.insert(moduleName)
+                }
+            }
+        }
+        return dependentModules
+    }
+
+    func hasTransitiveAncestorInModule(
+        typeInheritances: [String: Set<String>],
+        globalGraph: [String: Set<String>],
+        moduleSymbols: Set<String>
+    ) -> Bool {
+        for (_, directParents) in typeInheritances {
+            var visited = Set<String>()
+            var queue = Array(directParents)
+            while !queue.isEmpty {
+                let current = queue.removeFirst()
+                if visited.contains(current) { continue }
+                visited.insert(current)
+
+                if moduleSymbols.contains(current) {
+                    return true
+                }
+
+                // If this is a project-defined type, keep walking its parents
+                if let parents = globalGraph[current] {
+                    for parent in parents where !visited.contains(parent) {
+                        queue.append(parent)
+                    }
+                }
+            }
+        }
+        return false
     }
 
     private func generateReport() -> Report {
