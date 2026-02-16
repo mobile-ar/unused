@@ -15,8 +15,9 @@ class DeclarationVisitor: SyntaxVisitor {
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
     private var currentTypeProtocols: Set<String> = []
+    private var currentTypeIsMain: Bool = false
     private var insideProtocol: Bool = false
-    private var typeContextStack: [(name: String?, protocols: Set<String>)] = []
+    private var typeContextStack: [(name: String?, protocols: Set<String>, isMain: Bool)] = []
     private let sourceLocationConverter: SourceLocationConverter
 
     init(filePath: String, protocolRequirements: [String: Set<String>], sourceFile: SourceFileSyntax) {
@@ -34,22 +35,30 @@ class DeclarationVisitor: SyntaxVisitor {
         let name = node.name.identifierName
         var exclusionReason: ExclusionReason = .none
 
+        // Check if this is the static func main() inside a @main type
+        let isStatic = node.modifiers.contains(where: { $0.name.text == "static" })
+        if isStatic && name == "main" && currentTypeIsMain {
+            exclusionReason = .mainAttribute
+        }
+
         // Check for override keyword
-        if node.modifiers.contains(where: { $0.name.text == "override" }) {
+        if exclusionReason == .none && node.modifiers.contains(where: { $0.name.text == "override" }) {
             exclusionReason = .override
         }
 
         // Check for @objc, @IBAction attributes
-        for attribute in node.attributes {
-            if case .attribute(let attr) = attribute {
-                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
-                switch attrName {
-                case "objc":
-                    exclusionReason = .objcAttribute
-                case "IBAction":
-                    exclusionReason = .ibAction
-                default:
-                    break
+        if exclusionReason == .none {
+            for attribute in node.attributes {
+                if case .attribute(let attr) = attribute {
+                    let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                    switch attrName {
+                    case "objc":
+                        exclusionReason = .objcAttribute
+                    case "IBAction":
+                        exclusionReason = .ibAction
+                    default:
+                        break
+                    }
                 }
             }
         }
@@ -225,13 +234,15 @@ class DeclarationVisitor: SyntaxVisitor {
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
-        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+        let isMain = hasAttribute(named: "main", in: node.attributes)
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause), isMain: isMain)
 
         // Check if this class is a property wrapper
-        if hasPropertyWrapperAttribute(node.attributes) {
+        if hasAttribute(named: "propertyWrapper", in: node.attributes) {
             projectPropertyWrappers.insert(name)
         }
 
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -240,7 +251,7 @@ class DeclarationVisitor: SyntaxVisitor {
             type: .class,
             file: filePath,
             line: lineNumber,
-            exclusionReason: .none,
+            exclusionReason: exclusionReason,
             parentType: nil
         ))
         return .visitChildren
@@ -252,13 +263,15 @@ class DeclarationVisitor: SyntaxVisitor {
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
-        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+        let isMain = hasAttribute(named: "main", in: node.attributes)
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause), isMain: isMain)
 
         // Check if this struct is a property wrapper
-        if hasPropertyWrapperAttribute(node.attributes) {
+        if hasAttribute(named: "propertyWrapper", in: node.attributes) {
             projectPropertyWrappers.insert(name)
         }
 
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -267,7 +280,7 @@ class DeclarationVisitor: SyntaxVisitor {
             type: .class,
             file: filePath,
             line: lineNumber,
-            exclusionReason: .none,
+            exclusionReason: exclusionReason,
             parentType: nil
         ))
         return .visitChildren
@@ -279,13 +292,15 @@ class DeclarationVisitor: SyntaxVisitor {
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
-        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+        let isMain = hasAttribute(named: "main", in: node.attributes)
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause), isMain: isMain)
 
         // Check if this enum is a property wrapper
-        if hasPropertyWrapperAttribute(node.attributes) {
+        if hasAttribute(named: "propertyWrapper", in: node.attributes) {
             projectPropertyWrappers.insert(name)
         }
 
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -294,7 +309,7 @@ class DeclarationVisitor: SyntaxVisitor {
             type: .class,
             file: filePath,
             line: lineNumber,
-            exclusionReason: .none,
+            exclusionReason: exclusionReason,
             parentType: nil
         ))
         return .visitChildren
@@ -306,8 +321,10 @@ class DeclarationVisitor: SyntaxVisitor {
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
-        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause))
+        let isMain = hasAttribute(named: "main", in: node.attributes)
+        pushTypeContext(name: name, protocols: extractProtocols(from: node.inheritanceClause), isMain: isMain)
 
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -316,7 +333,7 @@ class DeclarationVisitor: SyntaxVisitor {
             type: .class,
             file: filePath,
             line: lineNumber,
-            exclusionReason: .none,
+            exclusionReason: exclusionReason,
             parentType: nil
         ))
         return .visitChildren
@@ -405,7 +422,7 @@ class DeclarationVisitor: SyntaxVisitor {
         let name = extractTypeName(from: node.extendedType)
         let protocols = extractProtocols(from: node.inheritanceClause)
 
-        pushTypeContext(name: name, protocols: protocols)
+        pushTypeContext(name: name, protocols: protocols, isMain: false)
 
         if !protocols.isEmpty {
             typeProtocolConformance[name, default: Set()].formUnion(protocols)
@@ -417,10 +434,11 @@ class DeclarationVisitor: SyntaxVisitor {
         popTypeContext()
     }
 
-    private func pushTypeContext(name: String, protocols: Set<String>) {
-        typeContextStack.append((name: currentTypeName, protocols: currentTypeProtocols))
+    private func pushTypeContext(name: String, protocols: Set<String>, isMain: Bool) {
+        typeContextStack.append((name: currentTypeName, protocols: currentTypeProtocols, isMain: currentTypeIsMain))
         currentTypeName = name
         currentTypeProtocols = protocols
+        currentTypeIsMain = isMain
 
         if !protocols.isEmpty {
             typeProtocolConformance[name, default: Set()].formUnion(protocols)
@@ -431,9 +449,11 @@ class DeclarationVisitor: SyntaxVisitor {
         if let previous = typeContextStack.popLast() {
             currentTypeName = previous.name
             currentTypeProtocols = previous.protocols
+            currentTypeIsMain = previous.isMain
         } else {
             currentTypeName = nil
             currentTypeProtocols = []
+            currentTypeIsMain = false
         }
     }
 
@@ -457,11 +477,11 @@ class DeclarationVisitor: SyntaxVisitor {
         return protocols
     }
 
-    private func hasPropertyWrapperAttribute(_ attributes: AttributeListSyntax) -> Bool {
+    private func hasAttribute(named name: String, in attributes: AttributeListSyntax) -> Bool {
         for attribute in attributes {
             if case .attribute(let attr) = attribute {
                 let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
-                if attrName == "propertyWrapper" {
+                if attrName == name {
                     return true
                 }
             }

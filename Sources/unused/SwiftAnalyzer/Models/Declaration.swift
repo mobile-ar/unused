@@ -21,6 +21,7 @@ enum ExclusionReason: String, Codable {
     case ibOutlet
     case writeOnly
     case caseIterable
+    case mainAttribute
     case none
 
     var description: String {
@@ -32,6 +33,7 @@ enum ExclusionReason: String, Codable {
         case .ibOutlet: return "@IBOutlet"
         case .writeOnly: return "write-only"
         case .caseIterable: return "CaseIterable"
+        case .mainAttribute: return "@main"
         case .none: return ""
         }
     }

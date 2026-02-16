@@ -14,34 +14,6 @@ struct ReportItem: Codable, Equatable, Hashable {
     let exclusionReason: ExclusionReason
     let parentType: String?
 
-    init(id: Int, declaration: Declaration) {
-        self.id = id
-        self.name = declaration.name
-        self.type = declaration.type
-        self.file = declaration.file
-        self.line = declaration.line
-        self.exclusionReason = declaration.exclusionReason
-        self.parentType = declaration.parentType
-    }
-
-    init(
-        id: Int,
-        name: String,
-        type: DeclarationType,
-        file: String,
-        line: Int,
-        exclusionReason: ExclusionReason,
-        parentType: String?
-    ) {
-        self.id = id
-        self.name = name
-        self.type = type
-        self.file = file
-        self.line = line
-        self.exclusionReason = exclusionReason
-        self.parentType = parentType
-    }
-
     var declaration: Declaration {
         Declaration(
             name: name,
@@ -54,18 +26,31 @@ struct ReportItem: Codable, Equatable, Hashable {
     }
 }
 
+extension ReportItem {
+    init(id: Int, declaration: Declaration) {
+        self.id = id
+        self.name = declaration.name
+        self.type = declaration.type
+        self.file = declaration.file
+        self.line = declaration.line
+        self.exclusionReason = declaration.exclusionReason
+        self.parentType = declaration.parentType
+    }
+}
+
 /// Container for excluded items categorized by exclusion reason
 struct ExcludedItems: Codable, Equatable {
     let overrides: [ReportItem]
     let protocolImplementations: [ReportItem]
     let objcItems: [ReportItem]
+    let mainTypes: [ReportItem]
 
     var totalCount: Int {
-        overrides.count + protocolImplementations.count + objcItems.count
+        overrides.count + protocolImplementations.count + objcItems.count + mainTypes.count
     }
 
     var allItems: [ReportItem] {
-        overrides + protocolImplementations + objcItems
+        overrides + protocolImplementations + objcItems + mainTypes
     }
 }
 

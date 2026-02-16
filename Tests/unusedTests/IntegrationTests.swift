@@ -106,7 +106,8 @@ struct IntegrationTests {
                 )
             ],
             protocolImplementations: [],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(
@@ -169,7 +170,7 @@ struct IntegrationTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -189,6 +190,163 @@ struct IntegrationTests {
         let secondEntry = readReport.item(withId: 2)
         #expect(secondEntry != nil)
         #expect(secondEntry?.name == "anotherFunction")
+    }
+
+    @Test func testMainStructExcluded() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("MainStruct.swift")
+        let swiftContent = """
+        @main
+        struct AppMain {
+            static func main() async {
+                print("hello")
+            }
+        }
+
+        class UnusedHelper {}
+        """
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+        let unusedClasses = report.unused.filter { $0.type == .class }
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+
+        #expect(!unusedClasses.contains { $0.name == "AppMain" })
+        #expect(unusedClasses.contains { $0.name == "UnusedHelper" })
+        #expect(!unusedFunctions.contains { $0.name == "main" })
+    }
+
+    @Test func testMainClassExcluded() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("MainClass.swift")
+        let swiftContent = """
+        @main
+        class AppDelegate {
+            static func main() {
+                print("hello")
+            }
+        }
+
+        class UnusedService {}
+        """
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+        let unusedClasses = report.unused.filter { $0.type == .class }
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+
+        #expect(!unusedClasses.contains { $0.name == "AppDelegate" })
+        #expect(unusedClasses.contains { $0.name == "UnusedService" })
+        #expect(!unusedFunctions.contains { $0.name == "main" })
+    }
+
+    @Test func testMainEnumExcluded() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("MainEnum.swift")
+        let swiftContent = """
+        @main
+        enum CLI {
+            static func main() async throws {
+                print("hello")
+            }
+        }
+
+        class UnusedModel {}
+        """
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: false
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+        let unusedClasses = report.unused.filter { $0.type == .class }
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+
+        #expect(!unusedClasses.contains { $0.name == "CLI" })
+        #expect(unusedClasses.contains { $0.name == "UnusedModel" })
+        #expect(!unusedFunctions.contains { $0.name == "main" })
+    }
+
+    @Test func testMainTypesAppearInExcludedReport() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let testSwiftFile = tempDir.appendingPathComponent("MainExcluded.swift")
+        let swiftContent = """
+        @main
+        struct AppMain {
+            static func main() async {
+                print("hello")
+            }
+        }
+        """
+        try swiftContent.write(to: testSwiftFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(
+            includeOverrides: false,
+            includeProtocols: false,
+            includeObjc: false,
+            showExcluded: true
+        )
+
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testSwiftFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        #expect(report.excluded.mainTypes.contains { $0.name == "AppMain" })
+        #expect(report.excluded.mainTypes.contains { $0.name == "main" })
+        #expect(report.excluded.mainTypes.count == 2)
+        #expect(report.unused.isEmpty)
     }
 
     @Test func testUnusedEnumCasesDetection() async throws {
@@ -476,7 +634,7 @@ struct IntegrationTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )

@@ -33,7 +33,7 @@ struct OpenCommandTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -86,7 +86,7 @@ struct OpenCommandTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -125,7 +125,7 @@ struct OpenCommandTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -159,7 +159,7 @@ struct OpenCommandTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -191,7 +191,7 @@ struct OpenCommandTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -228,7 +228,8 @@ struct OpenCommandTests {
             protocolImplementations: [
                 ReportItem(id: 3, name: "protocolFunc", type: .function, file: "/file3.swift", line: 30, exclusionReason: .protocolImplementation, parentType: nil)
             ],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(

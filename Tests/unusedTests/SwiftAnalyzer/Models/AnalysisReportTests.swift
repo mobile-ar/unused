@@ -129,7 +129,8 @@ struct ReportTests {
         let excluded = ExcludedItems(
             overrides: overrides,
             protocolImplementations: protocols,
-            objcItems: objc
+            objcItems: objc,
+            mainTypes: []
         )
 
         #expect(excluded.totalCount == 6)
@@ -151,7 +152,8 @@ struct ReportTests {
         let excluded = ExcludedItems(
             overrides: overrides,
             protocolImplementations: protocols,
-            objcItems: objc
+            objcItems: objc,
+            mainTypes: []
         )
 
         let allItems = excluded.allItems
@@ -163,11 +165,12 @@ struct ReportTests {
     }
 
     @Test func testExcludedItemsEmpty() async throws {
-        let excluded = ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [])
+        let excluded = ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: [])
 
         #expect(excluded.overrides.isEmpty)
         #expect(excluded.protocolImplementations.isEmpty)
         #expect(excluded.objcItems.isEmpty)
+        #expect(excluded.mainTypes.isEmpty)
         #expect(excluded.totalCount == 0)
         #expect(excluded.allItems.isEmpty)
     }
@@ -180,7 +183,8 @@ struct ReportTests {
             protocolImplementations: [
                 ReportItem(id: 2, name: "p1", type: .function, file: "/f.swift", line: 2, exclusionReason: .protocolImplementation, parentType: nil)
             ],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let encoder = JSONEncoder()
@@ -267,7 +271,8 @@ struct ReportTests {
                 ReportItem(id: 3, name: "o1", type: .function, file: "/f.swift", line: 3, exclusionReason: .override, parentType: nil)
             ],
             protocolImplementations: [],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let options = ReportOptions(includeOverrides: false, includeProtocols: true)
@@ -300,7 +305,8 @@ struct ReportTests {
             protocolImplementations: [
                 ReportItem(id: 3, name: "p1", type: .function, file: "/f.swift", line: 3, exclusionReason: .protocolImplementation, parentType: nil)
             ],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(
@@ -325,7 +331,8 @@ struct ReportTests {
                 ReportItem(id: 2, name: "o1", type: .function, file: "/f.swift", line: 2, exclusionReason: .override, parentType: nil)
             ],
             protocolImplementations: [],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(
@@ -358,7 +365,8 @@ struct ReportTests {
                 ReportItem(id: 10, name: "o1", type: .function, file: "/f.swift", line: 3, exclusionReason: .override, parentType: nil)
             ],
             protocolImplementations: [],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(
@@ -374,7 +382,7 @@ struct ReportTests {
     @Test func testReportMaxIdEmpty() async throws {
         let report = Report(
             unused: [],
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -392,7 +400,8 @@ struct ReportTests {
                 ReportItem(id: 2, name: "o1", type: .function, file: "/f.swift", line: 2, exclusionReason: .override, parentType: nil)
             ],
             protocolImplementations: [],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         let report = Report(

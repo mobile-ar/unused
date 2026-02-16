@@ -44,10 +44,11 @@ struct ReportService {
         let excludedOverrideItems = report.excluded.overrides
         let excludedProtocolItems = report.excluded.protocolImplementations
         let excludedObjcItems = report.excluded.objcItems
+        let excludedMainItems = report.excluded.mainTypes
         let testFileCount = report.summary.testFilesExcluded
         let options = report.options
 
-        let totalItems = unusedItems.count + excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count
+        let totalItems = unusedItems.count + excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count + excludedMainItems.count
         let idWidth = max(1, String(totalItems).count)
 
         let unusedFunctionItems = unusedItems.filter { $0.type == .function }
@@ -137,7 +138,7 @@ struct ReportService {
             }
         }
 
-        let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count
+        let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count + excludedMainItems.count
 
         if totalExcluded > 0 || testFileCount > 0 {
             print("\nExcluded from results:".teal.bold)
@@ -149,6 +150,9 @@ struct ReportService {
             }
             if !excludedObjcItems.isEmpty {
                 print("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+            }
+            if !excludedMainItems.isEmpty {
+                print("  - ".overlay0 + "\(excludedMainItems.count)".yellow + " @main entry point(s)".subtext0)
             }
             if testFileCount > 0 {
                 print("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
@@ -174,6 +178,14 @@ struct ReportService {
                 if !excludedObjcItems.isEmpty {
                     print("\n  @objc/@IBAction/@IBOutlet:".pink)
                     for item in excludedObjcItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                    }
+                }
+
+                if !excludedMainItems.isEmpty {
+                    print("\n  @main Entry Points:".teal)
+                    for item in excludedMainItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
                         print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }

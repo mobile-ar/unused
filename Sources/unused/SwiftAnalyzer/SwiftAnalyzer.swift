@@ -360,6 +360,8 @@ class SwiftAnalyzer {
             return true // Write-only items are always included
         case .caseIterable:
             return false // CaseIterable enum cases are excluded by default
+        case .mainAttribute:
+            return false // @main types are entry points and are excluded by default
         case .none:
             return true
         }
@@ -528,6 +530,10 @@ class SwiftAnalyzer {
              $0.exclusionReason == .ibOutlet) &&
             !options.includeObjc
         }
+        let excludedMain = declarations.filter {
+            !isUsed($0) &&
+            $0.exclusionReason == .mainAttribute
+        }
 
         var currentId = 1
         let unusedAll = unusedFunctions + unusedVariables + unusedClasses + unusedEnumCases + unusedProtocols + unusedTypealiases + unusedParameterDeclarations + unusedImportDeclarations + writeOnlyVariables
@@ -556,10 +562,17 @@ class SwiftAnalyzer {
             currentId += 1
         }
 
+        var excludedMainItems: [ReportItem] = []
+        for declaration in excludedMain {
+            excludedMainItems.append(ReportItem(id: currentId, declaration: declaration))
+            currentId += 1
+        }
+
         let excludedItems = ExcludedItems(
             overrides: excludedOverrideItems,
             protocolImplementations: excludedProtocolItems,
-            objcItems: excludedObjcItems
+            objcItems: excludedObjcItems,
+            mainTypes: excludedMainItems
         )
 
         return Report(

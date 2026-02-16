@@ -81,7 +81,8 @@ struct FilterServiceTests {
                     parentType: "Implementation"
                 )
             ],
-            objcItems: []
+            objcItems: [],
+            mainTypes: []
         )
 
         return Report(
@@ -377,7 +378,7 @@ struct FilterServiceTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -398,7 +399,7 @@ struct FilterServiceTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -418,7 +419,7 @@ struct FilterServiceTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
@@ -441,7 +442,7 @@ struct FilterServiceTests {
 
         let report = Report(
             unused: unusedItems,
-            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: []),
+            excluded: ExcludedItems(overrides: [], protocolImplementations: [], objcItems: [], mainTypes: []),
             options: ReportOptions(),
             testFilesExcluded: 0
         )
