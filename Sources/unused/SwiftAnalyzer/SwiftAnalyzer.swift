@@ -95,7 +95,10 @@ class SwiftAnalyzer {
         mergeProtocolResults(protocolResults)
 
         // Scan dependency source files for protocol definitions (third-party packages)
+        let spinner = ConsoleSpinner()
+        await spinner.start(message: "Collecting dependency protocol files...")
         let dependencyParsedFiles = parseDependencyProtocolFiles(in: directory)
+        await spinner.stop(success: true)
         if !dependencyParsedFiles.isEmpty {
             let depTracker = ProgressTracker(total: dependencyParsedFiles.count, prefix: "Scanning dependency protocols...")
             let depResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult.self) { group in
