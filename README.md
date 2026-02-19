@@ -295,4 +295,4 @@ These exclusions help reduce false positives since these items are often called 
 
 ## License
 
-[Add your license here later]
+[LICENSE](https://github.com/mobile-ar/unused?tab=MIT-1-ov-file)
