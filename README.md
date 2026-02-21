@@ -1,6 +1,8 @@
 # Unused
 
-A Swift CLI tool to find unused declarations in your Swift codebase.
+## A Swift CLI tool to find unused declarations in your Swift codebase.
+
+**Important** Still in development, some false positives might appear, so review before deleting and also highly recomemded to have source control setup or at least some backup of your codebase before running this tool, create a new branch and then run the tool.
 
 ## Features
 
