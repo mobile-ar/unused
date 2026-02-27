@@ -697,4 +697,229 @@ struct ProtocolVisitorTests {
         #expect(result.importedModules.contains("SwiftUI"))
     }
 
+    @Test
+    func testProtocolExtensionUsedMembersCollectsPropertyReads() {
+        let source = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                print(name)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Displayable"]?.contains("name") == true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersCollectsSelfPropertyReads() {
+        let source = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                print(self.name)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Displayable"]?.contains("name") == true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersCollectsFunctionCalls() {
+        let source = """
+        protocol Worker {
+            func prepare()
+            func execute()
+        }
+
+        extension Worker {
+            func run() {
+                prepare()
+                execute()
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Worker"]?.contains("prepare") == true)
+        #expect(result.protocolExtensionUsedMembers["Worker"]?.contains("execute") == true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersIgnoresNonRequirements() {
+        let source = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                let formatter = DateFormatter()
+                print(formatter.string(from: Date()))
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        // Only actual requirements should be tracked, not arbitrary identifiers
+        #expect(result.protocolExtensionUsedMembers["Displayable"]?.contains("name") != true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersEmptyForNoExtension() {
+        let source = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        struct User: Displayable {
+            var name: String
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Displayable"] == nil)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersEmptyForExtensionOnNonProtocol() {
+        let source = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        struct User: Displayable {
+            var name: String
+        }
+
+        extension User {
+            func greet() {
+                print(name)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        // Extension on User (a struct), not on a protocol
+        #expect(result.protocolExtensionUsedMembers["User"] == nil)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersWithMultipleRequirements() {
+        let source = """
+        protocol Describable {
+            var title: String { get }
+            var subtitle: String { get }
+            func format() -> String
+        }
+
+        extension Describable {
+            var fullDescription: String {
+                return "\\(title) - \\(subtitle): \\(format())"
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Describable"]?.contains("title") == true)
+        #expect(result.protocolExtensionUsedMembers["Describable"]?.contains("subtitle") == true)
+        #expect(result.protocolExtensionUsedMembers["Describable"]?.contains("format") == true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersOnlyTracksUsedOnes() {
+        let source = """
+        protocol Configurable {
+            var name: String { get }
+            var value: Int { get }
+            func reset()
+        }
+
+        extension Configurable {
+            func display() {
+                print(name)
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Configurable"]?.contains("name") == true)
+        #expect(result.protocolExtensionUsedMembers["Configurable"]?.contains("value") != true)
+        #expect(result.protocolExtensionUsedMembers["Configurable"]?.contains("reset") != true)
+    }
+
+    @Test
+    func testProtocolExtensionUsedMembersAcrossMultipleExtensions() {
+        let source = """
+        protocol Worker {
+            var name: String { get }
+            func prepare()
+            func execute()
+        }
+
+        extension Worker {
+            func run() {
+                prepare()
+            }
+        }
+
+        extension Worker {
+            func describe() {
+                print(name)
+                execute()
+            }
+        }
+        """
+
+        let sourceFile = Parser.parse(source: source)
+        let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
+        visitor.walk(sourceFile)
+        let result = visitor.result
+
+        #expect(result.protocolExtensionUsedMembers["Worker"]?.contains("name") == true)
+        #expect(result.protocolExtensionUsedMembers["Worker"]?.contains("prepare") == true)
+        #expect(result.protocolExtensionUsedMembers["Worker"]?.contains("execute") == true)
+    }
+
 }

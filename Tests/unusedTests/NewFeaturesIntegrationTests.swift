@@ -857,4 +857,378 @@ struct NewFeaturesIntegrationTests {
         #expect(unusedParams.isEmpty)
         #expect(unusedImports.isEmpty)
     }
+
+    @Test func testProtocolExtensionPropertyNotFlaggedAsWriteOnly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                print(name)
+            }
+        }
+
+        struct User: Displayable {
+            var name: String
+        }
+
+        let user = User(name: "Alice")
+        user.display()
+        """
+
+        let testFile = tempDir.appendingPathComponent("ProtocolExtensionWriteOnly.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        #expect(!writeOnlyNames.contains("name"))
+    }
+
+    @Test func testProtocolExtensionFunctionNotFlaggedAsUnused() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol Worker {
+            func prepare()
+        }
+
+        extension Worker {
+            func run() {
+                prepare()
+            }
+        }
+
+        struct MyWorker: Worker {
+            func prepare() {
+                print("preparing")
+            }
+        }
+
+        let worker = MyWorker()
+        worker.run()
+        """
+
+        let testFile = tempDir.appendingPathComponent("ProtocolExtensionFunction.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(includeProtocols: true)
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+        let unusedFunctionNames = unusedFunctions.map(\.name)
+
+        #expect(!unusedFunctionNames.contains("prepare"))
+    }
+
+    @Test func testProtocolExtensionInheritanceChainProperty() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol Named {
+            var name: String { get }
+        }
+
+        protocol Displayable: Named {
+        }
+
+        extension Displayable {
+            func display() {
+                print(name)
+            }
+        }
+
+        struct User: Displayable {
+            var name: String
+        }
+
+        let user = User(name: "Alice")
+        user.display()
+        """
+
+        let testFile = tempDir.appendingPathComponent("ProtocolExtensionInheritance.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        #expect(!writeOnlyNames.contains("name"))
+    }
+
+    @Test func testExternalProtocolConformancePropertyNotFlaggedAsWriteOnly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        struct User: CustomStringConvertible {
+            var description: String
+        }
+
+        var user = User(description: "Alice")
+        user.description = "Bob"
+        print(user)
+        """
+
+        let testFile = tempDir.appendingPathComponent("ExternalProtocolWriteOnly.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        // External protocol requirements should always be assumed used
+        #expect(!writeOnlyNames.contains("description"))
+    }
+
+    @Test func testExternalProtocolConformanceFunctionNotFlaggedAsUnused() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        struct MyKey: Hashable {
+            let id: Int
+
+            func hash(into hasher: inout Hasher) {
+                hasher.combine(id)
+            }
+
+            static func == (lhs: MyKey, rhs: MyKey) -> Bool {
+                lhs.id == rhs.id
+            }
+        }
+
+        let key = MyKey(id: 1)
+        let dict: [MyKey: String] = [key: "value"]
+        print(dict)
+        """
+
+        let testFile = tempDir.appendingPathComponent("ExternalProtocolFunction.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(includeProtocols: true)
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+        let unusedFunctionNames = unusedFunctions.map(\.name)
+
+        // External protocol requirement implementations should be assumed used
+        #expect(!unusedFunctionNames.contains("hash"))
+        #expect(!unusedFunctionNames.contains("=="))
+    }
+
+    @Test func testGenuineWriteOnlyPropertyStillFlagged() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                print(name)
+            }
+        }
+
+        struct User: Displayable {
+            var name: String
+            var unusedCounter: Int
+
+            func reset() {
+                unusedCounter = 0
+            }
+        }
+
+        let user = User(name: "Alice", unusedCounter: 0)
+        user.display()
+        user.reset()
+        """
+
+        let testFile = tempDir.appendingPathComponent("GenuineWriteOnly.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        // `name` is used via protocol extension — should NOT be write-only
+        #expect(!writeOnlyNames.contains("name"))
+        // `unusedCounter` is genuinely write-only — should still be flagged
+        #expect(writeOnlyNames.contains("unusedCounter"))
+    }
+
+    @Test func testProtocolExtensionUsageSelfDotAccess() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let swiftContent = """
+        protocol Configurable {
+            var setting: String { get }
+            func validate() -> Bool
+        }
+
+        extension Configurable {
+            func printConfig() {
+                print(self.setting)
+                _ = self.validate()
+            }
+        }
+
+        struct AppConfig: Configurable {
+            var setting: String
+
+            func validate() -> Bool {
+                return !setting.isEmpty
+            }
+        }
+
+        let config = AppConfig(setting: "debug")
+        config.printConfig()
+        """
+
+        let testFile = tempDir.appendingPathComponent("ProtocolExtensionSelfAccess.swift")
+        try swiftContent.write(to: testFile, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions(includeProtocols: true)
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([testFile])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        let unusedFunctions = report.unused.filter { $0.type == .function }
+        let unusedFunctionNames = unusedFunctions.map(\.name)
+
+        #expect(!writeOnlyNames.contains("setting"))
+        #expect(!unusedFunctionNames.contains("validate"))
+    }
+
+    @Test func testMultipleFilesProtocolExtensionUsage() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let protocolFile = """
+        protocol Displayable {
+            var name: String { get }
+        }
+
+        extension Displayable {
+            func display() {
+                print(name)
+            }
+        }
+        """
+
+        let conformingFile = """
+        struct User: Displayable {
+            var name: String
+        }
+
+        let user = User(name: "Alice")
+        user.display()
+        """
+
+        let file1 = tempDir.appendingPathComponent("Displayable.swift")
+        try protocolFile.write(to: file1, atomically: true, encoding: .utf8)
+
+        let file2 = tempDir.appendingPathComponent("User.swift")
+        try conformingFile.write(to: file2, atomically: true, encoding: .utf8)
+
+        let options = AnalyzerOptions()
+        let analyzer = SwiftAnalyzer(options: options, directory: tempDir.path)
+        await analyzer.analyzeFiles([file1, file2])
+
+        let report = try ReportService.read(from: tempDir.path)
+
+        let writeOnlyItems = report.unused.filter { $0.exclusionReason == .writeOnly }
+        let writeOnlyNames = writeOnlyItems.map(\.name)
+
+        #expect(!writeOnlyNames.contains("name"))
+    }
 }

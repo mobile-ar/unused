@@ -8,4 +8,5 @@ struct ProtocolVisitorResult: Sendable {
     let projectDefinedProtocols: Set<String>
     let importedModules: Set<String>
     let conformedProtocols: Set<String>
+    let protocolExtensionUsedMembers: [String: Set<String>]
 }

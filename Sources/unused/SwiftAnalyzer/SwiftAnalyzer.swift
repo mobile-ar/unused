@@ -17,6 +17,7 @@ class SwiftAnalyzer {
     private var projectDefinedProtocols: Set<String> = []
     private var importedModules: Set<String> = []
     private var conformedProtocols: Set<String> = []
+    private var protocolExtensionUsedMembers: [String: Set<String>] = [:]
     private var typeProtocolConformance: [String: Set<String>] = [:]
     private var typePropertyDeclarations: [String: [PropertyInfo]] = [:]
     private var writeOnlyProperties: Set<PropertyInfo> = []
@@ -126,6 +127,9 @@ class SwiftAnalyzer {
 
         // Propagate inherited protocol requirements transitively
         resolveInheritedRequirements()
+
+        // Propagate protocol extension used members through inheritance
+        resolveInheritedExtensionUsedMembers()
 
         // Collect property wrappers from imported modules
         let modulesToQuery = importedModules.union(["SwiftUI", "SwiftUICore", "Combine", "Observation", "SwiftData"])
@@ -267,6 +271,12 @@ class SwiftAnalyzer {
 
         writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
 
+        // Remove properties that are read via protocol extensions from write-only set.
+        // Also remove properties whose type conforms to an external (non-project-defined) protocol
+        // that requires them, since we cannot inspect external protocol extensions.
+        let protocolExtensionImplicitReads = buildProtocolExtensionImplicitReads()
+        writeOnlyProperties.subtract(protocolExtensionImplicitReads)
+
         // Step 6: Detect unused imports by cross-referencing per-file identifiers with module symbols
         await detectUnusedImports(allImportUsageResults)
 
@@ -288,6 +298,9 @@ class SwiftAnalyzer {
             }
             for (protocolName, parents) in result.protocolInheritance {
                 protocolInheritance[protocolName, default: Set()].formUnion(parents)
+            }
+            for (protocolName, members) in result.protocolExtensionUsedMembers {
+                protocolExtensionUsedMembers[protocolName, default: Set()].formUnion(members)
             }
             projectDefinedProtocols.formUnion(result.projectDefinedProtocols)
             importedModules.formUnion(result.importedModules)
@@ -334,6 +347,59 @@ class SwiftAnalyzer {
         resolver.resolveInheritedRequirements()
         protocolRequirements = resolver.protocolRequirements
         protocolInheritance = resolver.protocolInheritance
+    }
+
+    private func resolveInheritedExtensionUsedMembers() {
+        var changed = true
+        while changed {
+            changed = false
+            for (protocolName, parents) in protocolInheritance {
+                var currentUsed = protocolExtensionUsedMembers[protocolName] ?? []
+                let originalCount = currentUsed.count
+
+                for parent in parents {
+                    if let parentUsed = protocolExtensionUsedMembers[parent] {
+                        currentUsed.formUnion(parentUsed)
+                    }
+                }
+
+                if currentUsed.count != originalCount {
+                    protocolExtensionUsedMembers[protocolName] = currentUsed
+                    changed = true
+                }
+            }
+        }
+    }
+
+    private func buildProtocolExtensionImplicitReads() -> Set<PropertyInfo> {
+        var implicitReads: Set<PropertyInfo> = []
+
+        for (typeName, protocols) in typeProtocolConformance {
+            guard let properties = typePropertyDeclarations[typeName] else { continue }
+
+            var usedMemberNames: Set<String> = []
+
+            for protocolName in protocols {
+                // For project-defined protocols, use the collected extension used members
+                if let usedMembers = protocolExtensionUsedMembers[protocolName] {
+                    usedMemberNames.formUnion(usedMembers)
+                }
+
+                // For external protocols (not defined in the project), assume all
+                // requirements are used since we cannot inspect their extensions
+                if !projectDefinedProtocols.contains(protocolName) {
+                    if let requirements = protocolRequirements[protocolName] {
+                        usedMemberNames.formUnion(requirements)
+                    }
+                }
+            }
+
+            for property in properties where usedMemberNames.contains(property.name) {
+                implicitReads.insert(property)
+            }
+        }
+
+        return implicitReads
     }
 
     private func isWriteOnlyProperty(_ declaration: Declaration) -> Bool {
@@ -387,6 +453,31 @@ class SwiftAnalyzer {
 
         if unqualifiedMemberUsages.contains(name) {
             return true
+        }
+
+        if isUsedViaProtocolExtension(name: name, parentType: parentType) {
+            return true
+        }
+
+        return false
+    }
+
+    private func isUsedViaProtocolExtension(name: String, parentType: String) -> Bool {
+        guard let protocols = typeProtocolConformance[parentType] else { return false }
+
+        for protocolName in protocols {
+            // For project-defined protocols, check collected extension used members
+            if let usedMembers = protocolExtensionUsedMembers[protocolName], usedMembers.contains(name) {
+                return true
+            }
+
+            // For external protocols (not defined in the project), assume all
+            // requirements are used since we cannot inspect their extensions
+            if !projectDefinedProtocols.contains(protocolName) {
+                if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
+                    return true
+                }
+            }
         }
 
         return false

@@ -11,6 +11,7 @@ class ProtocolVisitor: SyntaxVisitor {
     private(set) var projectDefinedProtocols: Set<String> = []
     private(set) var importedModules: Set<String> = []
     private(set) var conformedProtocols: Set<String> = []
+    private(set) var protocolExtensionUsedMembers: [String: Set<String>] = [:]
 
     override init(viewMode: SyntaxTreeViewMode = .sourceAccurate) {
         super.init(viewMode: viewMode)
@@ -22,7 +23,8 @@ class ProtocolVisitor: SyntaxVisitor {
             protocolInheritance: protocolInheritance,
             projectDefinedProtocols: projectDefinedProtocols,
             importedModules: importedModules,
-            conformedProtocols: conformedProtocols
+            conformedProtocols: conformedProtocols,
+            protocolExtensionUsedMembers: protocolExtensionUsedMembers
         )
     }
 
@@ -85,6 +87,7 @@ class ProtocolVisitor: SyntaxVisitor {
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         collectConformedProtocols(inheritanceClause: node.inheritanceClause)
+        collectProtocolExtensionUsedMembers(node)
         return .visitChildren
     }
 
@@ -100,6 +103,28 @@ class ProtocolVisitor: SyntaxVisitor {
             if let typeName = inherited.type.as(IdentifierTypeSyntax.self)?.name.text {
                 conformedProtocols.insert(typeName)
             }
+        }
+    }
+
+    private func collectProtocolExtensionUsedMembers(_ node: ExtensionDeclSyntax) {
+        let extendedTypeName: String
+        if let identifier = node.extendedType.as(IdentifierTypeSyntax.self) {
+            extendedTypeName = identifier.name.text
+        } else {
+            return
+        }
+
+        guard projectDefinedProtocols.contains(extendedTypeName) else { return }
+
+        let requirements = protocolRequirements[extendedTypeName] ?? []
+        guard !requirements.isEmpty else { return }
+
+        let bodyVisitor = ProtocolExtensionBodyVisitor(viewMode: .sourceAccurate)
+        bodyVisitor.walk(node.memberBlock)
+
+        let usedRequirements = bodyVisitor.referencedMembers.intersection(requirements)
+        if !usedRequirements.isEmpty {
+            protocolExtensionUsedMembers[extendedTypeName, default: []].formUnion(usedRequirements)
         }
     }
 
