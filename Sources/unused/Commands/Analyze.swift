@@ -29,8 +29,20 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Include test files in the analysis")
     var includeTests: Bool = false
 
+    @Option(name: .long, help: "Output format: console (default) or xcode")
+    var format: OutputFormat = .console
+
+    @Flag(name: .long, help: "Disable ANSI color output for piping to files or non-TTY environments")
+    var noColor: Bool = false
+
     func run() async throws {
-        print("Unused v\(Unused.configuration.version)".blue.bold)
+        configureOutput()
+
+        let isXcode = format == .xcode
+
+        if !isXcode {
+            print("Unused v\(Unused.configuration.version)".blue.bold)
+        }
 
         let directoryURL = URL(fileURLWithPath: directory)
 
@@ -41,7 +53,7 @@ struct Analyze: AsyncParsableCommand {
             throw ValidationError("Directory does not exist: \(directory)")
         }
 
-        if ReportService.reportExists(in: directory) {
+        if !isXcode && ReportService.reportExists(in: directory) {
             print("Found existing .unused.json file from a previous run.".yellow)
             print("Do you want to view the previous run results? (y/n): ".lavender, terminator: "")
             fflush(stdout)
@@ -53,7 +65,7 @@ struct Analyze: AsyncParsableCommand {
             } else {
                 print("Running analysis again...".peach)
             }
-        } else {
+        } else if !isXcode {
             print("Running unused ...")
         }
 
@@ -63,7 +75,10 @@ struct Analyze: AsyncParsableCommand {
         await spinner.start(message: "Scanning for Swift files...")
         let directoryResult = await getSwiftFiles(in: directoryURL, includeTests: includeTests)
         await spinner.stop(success: true)
-        print("Found \(directoryResult.files.count) Swift files".teal)
+
+        if !isXcode {
+            print("Found \(directoryResult.files.count) Swift files".teal)
+        }
 
         let options = AnalyzerOptions(
             includeOverrides: includeOverrides,
@@ -77,18 +92,36 @@ struct Analyze: AsyncParsableCommand {
             directory: directory,
             excludedTestFileCount: directoryResult.excludedTestFileCount
         )
-        await analyzer.analyzeFiles(directoryResult.files)
+        let report = await analyzer.analyzeFiles(directoryResult.files)
 
-        let endTime = CFAbsoluteTimeGetCurrent()
-        let totalTime = endTime - startTime
-        print("\nTotal processing time: \(String(format: "%.2f", totalTime))s".green.bold)
+        if isXcode {
+            XcodeFormatter.display(report: report)
+        } else {
+            ReportService.display(report: report)
+
+            let endTime = CFAbsoluteTimeGetCurrent()
+            let totalTime = endTime - startTime
+            print("\nTotal processing time: \(String(format: "%.2f", totalTime))s".green.bold)
+        }
+    }
+
+    private func configureOutput() {
+        if noColor || format == .xcode {
+            OutputConfig.colorEnabled = false
+            OutputConfig.interactiveEnabled = false
+        }
     }
 
     private func displayExistingResults() throws {
         let report = try ReportService.read(from: directory)
-        ReportService.display(report: report)
-        print("\nDisplaying results from existing .unused.json file.".green.bold)
-        print("Run analysis again to update results.".overlay0)
+
+        if format == .xcode {
+            XcodeFormatter.display(report: report)
+        } else {
+            ReportService.display(report: report)
+            print("\nDisplaying results from existing .unused.json file.".green.bold)
+            print("Run analysis again to update results.".overlay0)
+        }
     }
 
 }

@@ -48,6 +48,8 @@ unused [<directory>] [options]
 - `--include-objc`: Include @objc/@IBAction/@IBOutlet items in the results
 - `--include-tests`: Include test files in the analysis
 - `--show-excluded`: Show detailed list of all excluded items
+- `--format <format>`: Output format — `console` (default) or `xcode` (emits `file:line: warning:` lines for Xcode build phase integration)
+- `--no-color`: Disable ANSI color output for piping to files or non-TTY environments (also disables progress bars and spinners)
 - `--help`, `-h`: Show help message
 - `--version`: Show version information
 
@@ -63,6 +65,10 @@ or
 ```bash
 unused --show-excluded
 ```
+or
+```bash
+unused --format xcode
+```
 
 ## Commands
 
@@ -75,6 +81,13 @@ unused analyze [<directory>] [options]
 ```
 
 This is the default command, so you can omit the `analyze` keyword.
+
+#### Output Format Options
+
+- `--format xcode`: Output warnings in Xcode-compatible format (`file:line: warning: ...`) — useful when running as a build phase script
+- `--no-color`: Disable ANSI colors, progress bars, and spinners — useful when piping output to a file or running in a non-TTY environment
+
+Color output is also automatically disabled when stdout is not a TTY (e.g., when piping to a file), and when the `NO_COLOR` environment variable is set (see [no-color.org](https://no-color.org)).
 
 ### filter
 
@@ -93,6 +106,11 @@ This command requires a previous `analyze` run that generated a `.unused.json` r
 - `-f, --file <file>`: Filter by file path pattern (glob pattern, e.g., `'**/Services/**'`)
 - `-n, --name <name>`: Filter by declaration name pattern (regex)
 - `--include-excluded`: Include excluded items (overrides, protocol implementations, etc.) in filter results
+
+#### Output Format Options
+
+- `--format <format>`: Output format — `console` (default) or `xcode`
+- `--no-color`: Disable ANSI color output
 
 #### Deletion Options
 
@@ -176,6 +194,30 @@ unused clean [<directory>]
 ```bash
 unused clean ~/Projects/MyApp
 ```
+
+### Xcode Build Phase Integration
+
+You can run `unused` as an Xcode build phase script so that unused declarations appear as warnings directly in the Xcode issue navigator, inline with your source code.
+
+1. In Xcode, select your project target → **Build Phases** → **+** → **New Run Script Phase**
+2. Add the following script:
+
+```bash
+if [ -x /usr/local/bin/unused ]; then
+    /usr/local/bin/unused analyze "${SRCROOT}/Sources" --format xcode
+fi
+```
+
+3. Optionally rename the build phase to "Check Unused Code"
+
+Each unused declaration will appear as a warning at the exact file and line, e.g.:
+
+```
+/path/to/File.swift:42: warning: Unused function 'doSomething()'
+/path/to/Model.swift:15: warning: Unused variable 'tempValue'
+```
+
+> **Tip**: You can add flags like `--include-overrides` or `--include-tests` to customize what gets flagged. Use `--include-objc` if you want to flag unused `@IBOutlet`/`@IBAction` items as well.
 
 ### xcode
 
@@ -293,7 +335,7 @@ These exclusions help reduce false positives since these items are often called 
 ## Requirements
 
 - Swift 6.2.3 or later.
-- macOS 15 or later (might also work in previous version but I won't be supporting any previous versions).
+- macOS 26 or later.
 
 ## License
 

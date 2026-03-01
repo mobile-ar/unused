@@ -43,7 +43,8 @@ class SwiftAnalyzer {
         self.excludedTestFileCount = excludedTestFileCount
     }
 
-    func analyzeFiles(_ files: [URL]) async {
+    @discardableResult
+    func analyzeFiles(_ files: [URL]) async -> Report {
         let totalFiles = files.count
 
         // Step 1: Parse all files in parallel (read from disk once, parse once)
@@ -288,7 +289,7 @@ class SwiftAnalyzer {
             print("Error writing .unused.json file: \(error)".red.bold)
         }
 
-        ReportService.display(report: report)
+        return report
     }
 
     private func mergeProtocolResults(_ results: [ProtocolVisitorResult]) {

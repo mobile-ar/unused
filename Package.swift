@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "unused",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v26)],
     products: [
         .executable(name: "unused", targets: ["unused"]),
     ],

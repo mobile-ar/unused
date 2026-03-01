@@ -41,8 +41,19 @@ struct Filter: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Interactively confirm each deletion one by one")
     var interactive: Bool = false
 
+    @Option(name: .long, help: "Output format: console (default) or xcode")
+    var format: OutputFormat = .console
+
+    @Flag(name: .long, help: "Disable ANSI color output for piping to files or non-TTY environments")
+    var noColor: Bool = false
+
     func run() async throws {
-        print("Unused v\(Unused.configuration.version)".blue.bold)
+        configureOutput()
+
+        let isXcode = format == .xcode
+        if !isXcode {
+            print("Unused v\(Unused.configuration.version)".blue.bold)
+        }
 
         guard ReportService.reportExists(in: directory) else {
             throw ValidationError("No .unused.json file found in \(directory). Run 'unused analyze' first.")
@@ -71,28 +82,41 @@ struct Filter: AsyncParsableCommand {
         let filteredItems = filterService.filter(report: report, criteria: criteria)
 
         if filteredItems.isEmpty {
-            print("No items match the specified filter criteria.".yellow)
+            if !isXcode {
+                print("No items match the specified filter criteria.".yellow)
+            }
             return
         }
 
-        displayFilteredItems(filteredItems)
+        if isXcode {
+            XcodeFormatter.display(items: filteredItems)
+        } else {
+            displayFilteredItems(filteredItems)
 
-        let summary = filterService.summary(filteredItems)
-        print("\nFiltered Results:".teal.bold)
-        print("  Functions: \(summary.functions)".subtext0)
-        print("  Variables: \(summary.variables)".subtext0)
-        print("  Classes/Structs/Enums: \(summary.classes)".subtext0)
-        print("  Enum Cases: \(summary.enumCases)".subtext0)
-        print("  Protocols: \(summary.protocols)".subtext0)
-        print("  Typealiases: \(summary.typealiases)".subtext0)
-        print("  Parameters: \(summary.parameters)".subtext0)
-        print("  Imports: \(summary.imports)".subtext0)
-        print("  Total: \(filteredItems.count)".green.bold)
+            let summary = filterService.summary(filteredItems)
+            print("\nFiltered Results:".teal.bold)
+            print("  Functions: \(summary.functions)".subtext0)
+            print("  Variables: \(summary.variables)".subtext0)
+            print("  Classes/Structs/Enums: \(summary.classes)".subtext0)
+            print("  Enum Cases: \(summary.enumCases)".subtext0)
+            print("  Protocols: \(summary.protocols)".subtext0)
+            print("  Typealiases: \(summary.typealiases)".subtext0)
+            print("  Parameters: \(summary.parameters)".subtext0)
+            print("  Imports: \(summary.imports)".subtext0)
+            print("  Total: \(filteredItems.count)".green.bold)
+        }
 
         if delete || dryRun {
             try await performDeletion(items: filteredItems, dryRun: dryRun)
         } else if interactive {
             print("\nNote: --interactive requires --delete to perform deletions.".yellow)
+        }
+    }
+
+    private func configureOutput() {
+        if noColor || format == .xcode {
+            OutputConfig.colorEnabled = false
+            OutputConfig.interactiveEnabled = false
         }
     }
 

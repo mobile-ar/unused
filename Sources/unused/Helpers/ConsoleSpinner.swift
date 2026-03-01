@@ -19,6 +19,7 @@ actor ConsoleSpinner: ConsoleSpinnerProtocol {
     private(set) var isRunning = false
 
     func start(message: String) async {
+        guard OutputConfig.interactiveEnabled else { return }
         guard !isRunning else { return }
 
         self.message = message
@@ -40,6 +41,7 @@ actor ConsoleSpinner: ConsoleSpinnerProtocol {
     /// Stops the spinner animation and displays a final status.
     /// - Parameter success: Whether to show a success (`✓`) or failure (`✗`) indicator.
     func stop(success: Bool) async {
+        guard OutputConfig.interactiveEnabled else { return }
         guard isRunning else { return }
 
         animationTask?.cancel()

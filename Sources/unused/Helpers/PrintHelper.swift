@@ -5,6 +5,8 @@
 import Foundation
 
 func printProgressBar(prefix: String, current: Int, total: Int) {
+    guard OutputConfig.interactiveEnabled else { return }
+
     let barLength = 50
     let progress = Double(current) / Double(total)
     let filledLength = Int(progress * Double(barLength))

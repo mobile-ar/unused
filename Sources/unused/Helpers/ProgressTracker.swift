@@ -21,6 +21,7 @@ actor ProgressTracker {
     }
 
     func finish() {
+        guard OutputConfig.interactiveEnabled else { return }
         print("")
     }
 
