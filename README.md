@@ -18,6 +18,8 @@
 - Automatically delete any unused code using --delete on filter
 - Interactive deletion mode with code preview and editor integration
 - Open declarations directly in Xcode or Zed by ID
+- Explore incoming references and outgoing dependencies in graphical terminal trees
+- Inspect reference locations, ambiguous matches, cycles, and production/test usage with configurable graph depth
 
 ## Installation
 
@@ -178,6 +180,97 @@ unused filter --type function -d -i
 
 **⚠️ Warning**: The `--delete` flag permanently removes code from your source files. Empty files are automatically deleted after all declarations are removed. Always use `--dry-run` first to preview changes, and ensure you have version control or backups before deleting.
 
+### graph
+
+Inspect who references a declaration and what it depends on before deciding whether to remove it. The command renders incoming and outgoing reference trees in the console, with declaration signatures, source locations, and a summary.
+
+```bash
+unused graph <id> [<directory>] [options]
+```
+
+This is a **read-only** command: it does not modify source files or the report. It requires a `.unused.json` report from `unused analyze`, uses that report to identify the selected declaration, and scans the current Swift sources to build the graph. Reference edges are not read from the cached report.
+
+#### Arguments
+
+- `<id>`: A positive declaration ID from the report in the selected directory. IDs can identify unused or excluded declarations; they should not be assumed to remain the same after a new analysis.
+- `<directory>`: The directory containing `.unused.json` and the Swift files to scan (defaults to the current directory). Use the same directory you passed to `unused analyze`.
+
+#### Graph Options
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--inbound-only` | Show only incoming dependents: declarations that reference the selected declaration | Both directions |
+| `--outbound-only` | Show only outgoing dependencies: declarations referenced by the selected declaration | Both directions |
+| `--depth <depth>` | Number of reference levels to display, from `1` to `10` | `1` |
+| `--limit <limit>` | Maximum nodes displayed per branch, from `1` to `1000` | `20` |
+| `--width <width>` | Output width in columns, from `20` to `300` | Terminal width, or `100` when not connected to a terminal |
+| `--include-tests` | Include tests even if the report's analysis excluded them | Follow the report's test-file setting |
+| `--ascii` | Use ASCII boxes, connectors, and status indicators instead of Unicode | Unicode |
+| `--no-color` | Disable ANSI colors and progress animation | Colors and animation enabled when supported |
+| `--help`, `-h` | Show command help | — |
+
+`--inbound-only` and `--outbound-only` are mutually exclusive. They control which trees are displayed, not which references are collected: the summary and assessment still consider both directions.
+
+Increasing `--depth` reveals transitive references. Hidden nodes and reference sites are noted explicitly, and each tree is capped at 200 displayed node entries to keep large graphs manageable. The summary always reports all **direct** references, independent of the display depth or limits.
+
+#### Examples
+
+```bash
+# Generate a report and note the ID of a declaration to inspect
+unused analyze ~/Projects/MyApp
+
+# Inspect declaration 42 from that report
+unused graph 42 ~/Projects/MyApp
+
+# Follow callers and dependencies for three levels
+unused graph 42 ~/Projects/MyApp --depth 3 --limit 10
+
+# Focus on incoming references, including tests
+unused graph 42 ~/Projects/MyApp --inbound-only --include-tests
+
+# Focus on outgoing dependencies
+unused graph 42 ~/Projects/MyApp --outbound-only
+
+# Save plain ASCII output without colors or animation
+unused graph 42 ~/Projects/MyApp --ascii --no-color --width 80 > graph.txt
+
+# See all available graph options
+unused graph --help
+```
+
+#### Reading the Graph
+
+The selected declaration's header shows its report ID, kind, signature, location, exclusion context, and scan scope. Paths within the project are displayed relative to the selected directory. The arrows indicate reference direction: **incoming dependents → selected declaration → outgoing dependencies**.
+
+An illustrative tree excerpt for `LegacyCache.clear()`:
+
+```text
+Inbound dependents → SELECTED
+└── (none)
+
+SELECTED → Outbound dependencies
+└── variable LegacyCache.storage [write; 1 site]
+    at Sources/LegacyCache.swift:12:5
+    write @ Sources/LegacyCache.swift:28:9
+```
+
+- **`at`** identifies where the neighboring declaration is defined; **`@`** identifies the actual reference location (`file:line:column`). Up to three locations are shown per neighboring declaration.
+- **`call`, `read`, `write`, `type`, `reference`** describe the relationship. A node can have several kinds and multiple reference sites; not every incoming reference is a function call.
+- **`? ambiguous`** marks possible matches that syntax analysis cannot confidently distinguish, such as unknown receivers or compatible overloads. These are not confirmed compiler-resolved references.
+- **`[cycle]`** marks a reference back to a node on the current traversal path, including recursion. **`[shared; shown above]`** marks a node already encountered on another branch.
+- **Summary counts** distinguish unique neighboring declarations from reference sites, split production and test usage, and separate syntax-matched sites from possible-only matches.
+- **Unresolved/external candidates** list references that could not be linked to a project declaration. They are not necessarily external dependencies.
+
+#### Scope, Freshness, and Limitations
+
+Tests follow the report's `includeTests` setting unless you add `--include-tests`. Scanning a `Sources` directory alone will not discover sibling `Tests` directories; analyze and graph the project root if you need both.
+
+If the saved location no longer identifies the declaration, the command asks you to run `unused analyze` again rather than presenting a removal assessment. It also warns about detected source changes, unreadable files, or syntax errors.
+
+Parameter and import findings do not have independent call graphs. Inspect an enclosing declaration with its own report ID instead. For a type declaration, outgoing dependencies describe its own signature, not the combined bodies of all its members. Subscript invocations may require type checking and can be missing from incoming references.
+
+> **Important:** The graph is syntax-based, not a compiler-verified call graph. Dynamic dispatch, protocol-mediated calls, runtime callbacks, external modules, and unresolved references may be missing. **No incoming project references found does not mean safe to remove.** Review the code and verify with your project's build and tests before deleting it.
+
 ### clean
 
 Clean up all `.unused.json` report files from a directory (searched recursively).
@@ -275,6 +368,8 @@ Just run this command:
 unused install-completions
 ```
 
+After updating `unused`, rerun `unused install-completions` to refresh generated completion scripts with new commands and options, including `graph`.
+
 This will:
 - Automatically detect your shell (bash/zsh/fish)
 - Clean up any existing completions from previous installations
@@ -297,8 +392,8 @@ exec zsh
 ### What You Get
 
 Once installed, you can use tab completion for:
-- Commands: `unused analyze`, `unused filter`, `unused clean`, `unused xcode`, `unused zed`, `unused install-completions`
-- Options: `--include-overrides`, `--include-protocols`, `--include-objc`, `--include-tests`, `--show-excluded`
+- Commands: `unused analyze`, `unused filter`, `unused graph`, `unused clean`, `unused xcode`, `unused zed`, `unused install-completions`
+- Options: `--include-overrides`, `--include-protocols`, `--include-objc`, `--include-tests`, `--show-excluded`, and command-specific options such as `--depth`, `--limit`, `--width`, `--inbound-only`, `--outbound-only`, and `--ascii`
 - File paths for the directory argument
 
 ## How It Works
@@ -314,7 +409,9 @@ The tool analyzes your Swift files in six passes:
 
 Declarations that are found but never used are reported as potentially unused. Variables that are only written to but never read are reported separately as write-only.
 
-Results are saved to a `.unused.json` file in the analyzed directory for use by the `filter`, `xcode`, and `zed` commands.
+Results are saved to a `.unused.json` file in the analyzed directory for use by the `filter`, `graph`, `xcode`, and `zed` commands.
+
+The `graph` command performs a separate, on-demand scan of current sources. It collects per-declaration reference sites, resolves scoped project matches, marks ambiguous matches, and traverses the resulting graph to the requested display depth. It does not change the report or source files.
 
 ## Exclusions
 
