@@ -12,6 +12,7 @@ class ProtocolResolver {
     let importedModules: Set<String>
     let conformedProtocols: Set<String>
     private let swiftInterfaceClient: SwiftInterfaceClient
+    private let progressTrackerFactory: @Sendable (Int, String) -> ProgressTracker
 
     init(
         protocolRequirements: [String: Set<String>],
@@ -19,7 +20,10 @@ class ProtocolResolver {
         projectDefinedProtocols: Set<String>,
         importedModules: Set<String>,
         conformedProtocols: Set<String>,
-        swiftInterfaceClient: SwiftInterfaceClient
+        swiftInterfaceClient: SwiftInterfaceClient,
+        progressTrackerFactory: @escaping @Sendable (Int, String) -> ProgressTracker = {
+            ProgressTracker(total: $0, prefix: $1)
+        }
     ) {
         self.protocolRequirements = protocolRequirements
         self.protocolInheritance = protocolInheritance
@@ -27,6 +31,7 @@ class ProtocolResolver {
         self.importedModules = importedModules
         self.conformedProtocols = conformedProtocols
         self.swiftInterfaceClient = swiftInterfaceClient
+        self.progressTrackerFactory = progressTrackerFactory
     }
 
     func resolveExternalProtocols() async {
@@ -42,54 +47,57 @@ class ProtocolResolver {
         var resolvedSet = Set<String>()
         var queue = Array(externalProtocolsToResolve)
 
-        var progressIndex = 0
+        var completed = 0
+        let tracker = progressTrackerFactory(queue.count, "Analyzing external protocols...")
 
         while !queue.isEmpty {
             let protocolName = queue.removeFirst()
-            progressIndex += 1
-            let displayTotal = progressIndex + queue.count
-            printProgressBar(prefix: "Analyzing external protocols...", current: progressIndex, total: displayTotal)
-
-            if resolvedSet.contains(protocolName) || projectDefinedProtocols.contains(protocolName) {
-                continue
-            }
-
-            if protocolRequirements[protocolName] != nil && protocolInheritance[protocolName] != nil {
-                resolvedSet.insert(protocolName)
-                continue
-            }
-
-            var foundRequirements: Set<String>?
-            var foundParents: Set<String>?
-
-            for moduleName in modulesToTry {
-                if let requirements = await swiftInterfaceClient.getProtocolRequirements(protocolName: protocolName, inModule: moduleName) {
-                    foundRequirements = requirements
-                    foundParents = await swiftInterfaceClient.getProtocolParents(protocolName: protocolName, inModule: moduleName)
-                    break
-                }
-            }
-
-            if protocolRequirements[protocolName] == nil {
-                protocolRequirements[protocolName] = foundRequirements ?? Set()
-            }
-
-            if let parents = foundParents, !parents.isEmpty {
-                protocolInheritance[protocolName] = parents
-
-                for parent in parents {
-                    if !resolvedSet.contains(parent) && !projectDefinedProtocols.contains(parent) && protocolRequirements[parent] == nil {
-                        queue.append(parent)
-                    }
-                }
-            }
-
-            resolvedSet.insert(protocolName)
+            await resolveProtocol(protocolName, modules: modulesToTry, resolved: &resolvedSet, queue: &queue)
+            completed += 1
+            // Parent protocols can expand the queue; estimate only the currently known work.
+            await tracker.increment(total: completed + queue.count)
         }
 
-        if progressIndex > 0 {
-            print("")
+        await tracker.finish()
+    }
+
+    private func resolveProtocol(
+        _ protocolName: String,
+        modules: Set<String>,
+        resolved: inout Set<String>,
+        queue: inout [String]
+    ) async {
+        guard !resolved.contains(protocolName), !projectDefinedProtocols.contains(protocolName) else { return }
+        if protocolRequirements[protocolName] != nil && protocolInheritance[protocolName] != nil {
+            resolved.insert(protocolName)
+            return
         }
+
+        var foundRequirements: Set<String>?
+        var foundParents: Set<String>?
+
+        for moduleName in modules {
+            if let requirements = await swiftInterfaceClient.getProtocolRequirements(protocolName: protocolName, inModule: moduleName) {
+                foundRequirements = requirements
+                foundParents = await swiftInterfaceClient.getProtocolParents(protocolName: protocolName, inModule: moduleName)
+                break
+            }
+        }
+
+        if protocolRequirements[protocolName] == nil {
+            protocolRequirements[protocolName] = foundRequirements ?? Set()
+        }
+
+        if let parents = foundParents, !parents.isEmpty {
+            protocolInheritance[protocolName] = parents
+            for parent in parents {
+                if !resolved.contains(parent) && !projectDefinedProtocols.contains(parent) && protocolRequirements[parent] == nil {
+                    queue.append(parent)
+                }
+            }
+        }
+
+        resolved.insert(protocolName)
     }
 
     func resolveInheritedRequirements() {

@@ -35,7 +35,22 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Disable ANSI color output for piping to files or non-TTY environments")
     var noColor: Bool = false
 
+    @Option(name: .long, help: "Warn after discovering this many Swift files, including excluded tests (must be positive)")
+    var fileCountWarningThreshold: Int = 1_000
+
+    mutating func validate() throws {
+        guard fileCountWarningThreshold > 0 else {
+            throw ValidationError("--file-count-warning-threshold must be positive.")
+        }
+    }
+
     func run() async throws {
+        try await run(diagnostics: AnalysisDiagnostics(
+            warningPolicy: AnalysisWarningPolicy(fileCountThreshold: fileCountWarningThreshold)
+        ))
+    }
+
+    func run(diagnostics: AnalysisDiagnostics) async throws {
         configureOutput()
 
         let isXcode = format == .xcode
@@ -69,11 +84,17 @@ struct Analyze: AsyncParsableCommand {
             print("Running unused ...")
         }
 
+        diagnostics.warnAboutDirectory(directoryURL)
         let startTime = CFAbsoluteTimeGetCurrent()
 
         let spinner = ConsoleSpinner()
         await spinner.start(message: "Scanning for Swift files...")
-        let directoryResult = await getSwiftFiles(in: directoryURL, includeTests: includeTests)
+        let directoryResult = await getSwiftFiles(
+            in: directoryURL,
+            includeTests: includeTests,
+            fileCountWarningThreshold: diagnostics.warningPolicy.fileCountThreshold,
+            onFileCountWarning: { diagnostics.warnAboutFileCount($0, in: directoryURL) }
+        )
         await spinner.stop(success: true)
 
         if !isXcode {
@@ -103,6 +124,7 @@ struct Analyze: AsyncParsableCommand {
             let totalTime = endTime - startTime
             print("\nTotal processing time: \(String(format: "%.2f", totalTime))s".green.bold)
         }
+        diagnostics.reportMemory(format: format)
     }
 
     private func configureOutput() {

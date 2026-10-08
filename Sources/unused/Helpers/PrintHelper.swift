@@ -1,21 +1,22 @@
-//
-//  Created by Fernando Romiti on 25/01/2026.
-//
-
 import Foundation
 
-func printProgressBar(prefix: String, current: Int, total: Int) {
-    guard OutputConfig.interactiveEnabled else { return }
-
-    let barLength = 50
-    let progress = Double(current) / Double(total)
-    let filledLength = Int(progress * Double(barLength))
-    let emptyLength = barLength - filledLength
-
-    let filledBar = String(repeating: "█", count: filledLength).mauve
-    let emptyBar = String(repeating: "░", count: emptyLength).lavender
-    let percentage = String(format: "%.1f", progress * 100)
-
-    print("\r\u{1B}[K \(prefix.sapphire.bold) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total))", terminator: "")
-    fflush(stdout)
+func printProgressBar(
+    prefix: String,
+    current: Int,
+    total: Int,
+    estimatedRemaining: Duration? = nil,
+    elapsed: Duration? = nil,
+    interactiveEnabled: Bool = OutputConfig.interactiveEnabled,
+    colorEnabled: Bool = OutputConfig.colorEnabled,
+    write: @Sendable (String) -> Void = {
+        print($0, terminator: "")
+        fflush(stdout)
+    }
+) {
+    guard interactiveEnabled else { return }
+    let update = ProgressUpdate(
+        prefix: prefix, current: current, total: total, estimatedRemaining: estimatedRemaining, elapsed: elapsed
+    )
+    let line = ProgressBarFormatter(colorEnabled: colorEnabled).render(update)
+    write("\r\u{1B}[K" + line)
 }

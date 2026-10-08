@@ -30,17 +30,22 @@ class SwiftAnalyzer {
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient
     private let excludedTestFileCount: Int
+    private let progressTrackerFactory: @Sendable (Int, String) -> ProgressTracker
 
     init(
         options: AnalyzerOptions = AnalyzerOptions(),
         directory: String,
         swiftInterfaceClient: SwiftInterfaceClient = SwiftInterfaceClient(),
-        excludedTestFileCount: Int = 0
+        excludedTestFileCount: Int = 0,
+        progressTrackerFactory: @escaping @Sendable (Int, String) -> ProgressTracker = {
+            ProgressTracker(total: $0, prefix: $1)
+        }
     ) {
         self.options = options
         self.directory = directory
         self.swiftInterfaceClient = swiftInterfaceClient
         self.excludedTestFileCount = excludedTestFileCount
+        self.progressTrackerFactory = progressTrackerFactory
     }
 
     @discardableResult
@@ -48,11 +53,10 @@ class SwiftAnalyzer {
         let totalFiles = files.count
 
         // Step 1: Parse all files in parallel (read from disk once, parse once)
-        let parseTracker = ProgressTracker(total: totalFiles, prefix: "Parsing files...")
+        let parseTracker = progressTrackerFactory(totalFiles, "Parsing files...")
         let parsedFiles: [ParsedFile] = await withTaskGroup(of: ParsedFile?.self) { group in
             for file in files {
                 group.addTask {
-                    await parseTracker.increment()
                     guard let source = try? String(contentsOf: file, encoding: .utf8) else {
                         return nil
                     }
@@ -63,6 +67,7 @@ class SwiftAnalyzer {
             var results: [ParsedFile] = []
             results.reserveCapacity(totalFiles)
             for await parsed in group {
+                await parseTracker.increment()
                 if let parsed {
                     results.append(parsed)
                 }
@@ -74,11 +79,10 @@ class SwiftAnalyzer {
         let parsedFileCount = parsedFiles.count
 
         // Step 2: Collect protocol information in parallel
-        let protocolTracker = ProgressTracker(total: parsedFileCount, prefix: "Analyzing protocols...")
+        let protocolTracker = progressTrackerFactory(parsedFileCount, "Analyzing protocols...")
         let protocolResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult.self) { group in
             for parsed in parsedFiles {
                 group.addTask {
-                    await protocolTracker.increment()
                     let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
                     visitor.walk(parsed.sourceFile)
                     return visitor.result
@@ -87,6 +91,7 @@ class SwiftAnalyzer {
             var results: [ProtocolVisitorResult] = []
             results.reserveCapacity(parsedFileCount)
             for await result in group {
+                await protocolTracker.increment()
                 results.append(result)
             }
             return results
@@ -102,11 +107,10 @@ class SwiftAnalyzer {
         let dependencyParsedFiles = parseDependencyProtocolFiles(in: directory)
         await spinner.stop(success: true)
         if !dependencyParsedFiles.isEmpty {
-            let depTracker = ProgressTracker(total: dependencyParsedFiles.count, prefix: "Scanning dependency protocols...")
+            let depTracker = progressTrackerFactory(dependencyParsedFiles.count, "Scanning dependency protocols...")
             let depResults: [ProtocolVisitorResult] = await withTaskGroup(of: ProtocolVisitorResult.self) { group in
                 for parsedFile in dependencyParsedFiles {
                     group.addTask {
-                        await depTracker.increment()
                         let visitor = ProtocolVisitor(viewMode: .sourceAccurate)
                         visitor.walk(parsedFile.sourceFile)
                         return visitor.result
@@ -114,6 +118,7 @@ class SwiftAnalyzer {
                 }
                 var results: [ProtocolVisitorResult] = []
                 for await result in group {
+                    await depTracker.increment()
                     results.append(result)
                 }
                 return results
@@ -137,12 +142,11 @@ class SwiftAnalyzer {
         propertyWrappers = await swiftInterfaceClient.getAllPropertyWrappers(fromModules: modulesToQuery)
 
         // Step 3: Collect all declarations in parallel
-        let declTracker = ProgressTracker(total: parsedFileCount, prefix: "Collecting declarations...")
+        let declTracker = progressTrackerFactory(parsedFileCount, "Collecting declarations...")
         let declarationResults: [DeclarationVisitorResult] = await withTaskGroup(of: DeclarationVisitorResult.self) { group in
             let requirements = protocolRequirements
             for parsed in parsedFiles {
                 group.addTask {
-                    await declTracker.increment()
                     let visitor = DeclarationVisitor(
                         filePath: parsed.url.path,
                         protocolRequirements: requirements,
@@ -160,6 +164,7 @@ class SwiftAnalyzer {
             var results: [DeclarationVisitorResult] = []
             results.reserveCapacity(parsedFileCount)
             for await result in group {
+                await declTracker.increment()
                 results.append(result)
             }
             return results
@@ -173,12 +178,11 @@ class SwiftAnalyzer {
         markCaseIterableEnumCases()
 
         // Step 4: Collect unused parameters in parallel
-        let paramTracker = ProgressTracker(total: parsedFileCount, prefix: "Checking parameters...")
+        let paramTracker = progressTrackerFactory(parsedFileCount, "Checking parameters...")
         let parameterResults: [[Declaration]] = await withTaskGroup(of: [Declaration].self) { group in
             let requirements = protocolRequirements
             for parsed in parsedFiles {
                 group.addTask {
-                    await paramTracker.increment()
                     let visitor = UnusedParameterVisitor(
                         filePath: parsed.url.path,
                         protocolRequirements: requirements,
@@ -191,6 +195,7 @@ class SwiftAnalyzer {
             var results: [[Declaration]] = []
             results.reserveCapacity(parsedFileCount)
             for await result in group {
+                await paramTracker.increment()
                 results.append(result)
             }
             return results
@@ -206,14 +211,12 @@ class SwiftAnalyzer {
         let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
         let allTypePropertyDeclarations = typePropertyDeclarations
 
-        let usageTracker = ProgressTracker(total: parsedFileCount, prefix: "Collecting usage...")
+        let usageTracker = progressTrackerFactory(parsedFileCount, "Collecting usage...")
         let combinedResults: [(usage: UsageVisitorResult, writeOnly: WriteOnlyVisitorResult, importUsage: ImportUsageResult)] = await withTaskGroup(
             of: (UsageVisitorResult, WriteOnlyVisitorResult, ImportUsageResult).self
         ) { group in
             for parsed in parsedFiles {
                 group.addTask {
-                    await usageTracker.increment()
-
                     // Usage visitor
                     let usageVisitor = UsageVisitor(knownTypeNames: knownTypeNames)
                     usageVisitor.walk(parsed.sourceFile)
@@ -250,6 +253,7 @@ class SwiftAnalyzer {
             var results: [(UsageVisitorResult, WriteOnlyVisitorResult, ImportUsageResult)] = []
             results.reserveCapacity(parsedFileCount)
             for await result in group {
+                await usageTracker.increment()
                 results.append(result)
             }
             return results

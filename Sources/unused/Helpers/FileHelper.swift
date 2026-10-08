@@ -9,20 +9,36 @@ struct SwiftFileDiscoveryResult: Sendable {
     let excludedTestFileCount: Int
 }
 
-func getSwiftFiles(in directory: URL, includeTests: Bool = false) async -> SwiftFileDiscoveryResult {
+func getSwiftFiles(
+    in directory: URL,
+    includeTests: Bool = false,
+    fileCountWarningThreshold: Int? = nil,
+    onFileCountWarning: @Sendable (Int) -> Void = { _ in }
+) async -> SwiftFileDiscoveryResult {
     var swiftFiles = [URL]()
     var excludedTestCount = 0
+    var discoveredFileCount = 0
     let fileManager = FileManager.default
-    let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil)
+    let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey])
 
     while let element = enumerator?.nextObject() as? URL {
-        if !element.pathComponents.contains(".build") && element.pathExtension == "swift" {
-            if !includeTests && isTestFile(element) {
-                excludedTestCount += 1
-                continue
-            }
-            swiftFiles.append(element)
+        if element.pathComponents.contains(".build") {
+            enumerator?.skipDescendants()
+            continue
         }
+        guard element.pathExtension == "swift",
+              (try? element.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true else {
+            continue
+        }
+        discoveredFileCount += 1
+        if let threshold = fileCountWarningThreshold, threshold > 0, discoveredFileCount == threshold {
+            onFileCountWarning(discoveredFileCount)
+        }
+        if !includeTests && isTestFile(element) {
+            excludedTestCount += 1
+            continue
+        }
+        swiftFiles.append(element)
     }
 
     return SwiftFileDiscoveryResult(files: swiftFiles, excludedTestFileCount: excludedTestCount)
