@@ -767,7 +767,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testProtocolExtensionUsedMembersIgnoresNonRequirements() {
+    func testProtocolExtensionUsedMembersReturnsRawReferences() {
         let source = """
         protocol Displayable {
             var name: String { get }
@@ -786,8 +786,8 @@ struct ProtocolVisitorTests {
         visitor.walk(sourceFile)
         let result = visitor.result
 
-        // Only actual requirements should be tracked, not arbitrary identifiers
         #expect(result.protocolExtensionUsedMembers["Displayable"]?.contains("name") != true)
+        #expect(result.protocolExtensionUsedMembers["Displayable"]?.contains("formatter") == true)
     }
 
     @Test
@@ -811,7 +811,7 @@ struct ProtocolVisitorTests {
     }
 
     @Test
-    func testProtocolExtensionUsedMembersEmptyForExtensionOnNonProtocol() {
+    func testProtocolExtensionUsedMembersIncludesNonProtocolExtensionsForGlobalFiltering() {
         let source = """
         protocol Displayable {
             var name: String { get }
@@ -833,8 +833,7 @@ struct ProtocolVisitorTests {
         visitor.walk(sourceFile)
         let result = visitor.result
 
-        // Extension on User (a struct), not on a protocol
-        #expect(result.protocolExtensionUsedMembers["User"] == nil)
+        #expect(result.protocolExtensionUsedMembers["User"]?.contains("name") == true)
     }
 
     @Test

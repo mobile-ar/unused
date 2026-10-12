@@ -427,7 +427,7 @@ struct ReportTests {
     }
 
     @Test func testReportCurrentVersion() async throws {
-        #expect(Report.currentVersion == "1.0")
+        #expect(Report.currentVersion == "2.0")
     }
 
     @Test func testDeclarationTypeCodable() async throws {

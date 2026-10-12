@@ -9,6 +9,77 @@ import SwiftSyntax
 
 struct CodingKeysVisitorTests {
 
+    @Test func nestedReportOwnersFindOnlyTheirOwnCodingKeysAndCoderCalls() throws {
+        let sourceFile = Parser.parse(source: """
+        struct Outer {
+            var value: Int
+            enum CodingKeys { case value = "outer" }
+            struct Inner: Codable {
+                var value: Int
+                enum CodingKeys { case value = "inner" }
+                func encode(to encoder: Encoder) {
+                    container.encode(value, forKey: .value)
+                }
+                init(from decoder: Decoder) {
+                    value = container.decode(Int.self, forKey: .value)
+                }
+            }
+            func encode(to encoder: Encoder) { container.encode(value, forKey: .value) }
+        }
+        struct Other {
+            struct Inner {
+                var value: Int
+                enum CodingKeys { case value = "unrelated" }
+                func encode(to encoder: Encoder) { container.encode(value, forKey: .value) }
+            }
+        }
+        """)
+        let declarations = DeclarationVisitor(filePath: "test.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        declarations.walk(sourceFile)
+        let property = try #require(declarations.declarations.first { $0.name == "value" && $0.parentType == "Outer.Inner" })
+        let report = ReportItem(id: 1, declaration: property)
+        let visitor = CodingKeysVisitor(typeName: report.parentType, propertyName: report.name, sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.codingKeyCases.count == 1)
+        #expect(visitor.codingKeyCases.first?.sourceText == "case value = \"inner\"")
+        #expect(visitor.encoderCalls.count == 1)
+        #expect(visitor.decoderCalls.count == 1)
+        let outer = CodingKeysVisitor(typeName: "Outer", propertyName: "value", sourceFile: sourceFile)
+        outer.walk(sourceFile)
+        #expect(outer.codingKeyCases.count == 1)
+        #expect(outer.codingKeyCases.first?.sourceText == "case value = \"outer\"")
+        #expect(outer.encoderCalls.count == 1)
+        #expect(outer.decoderCalls.isEmpty)
+    }
+
+    @Test func qualifiedExtensionsNormalizeEscapedOwnerAndCodingKeyNames() {
+        let sourceFile = Parser.parse(source: """
+        struct `Outer` { struct `Inner`<T> { var `repeat`: Int } }
+        extension `Outer`.`Inner`<Int>: Codable {
+            enum `CodingKeys` { case `repeat` }
+            func encode(to encoder: Encoder) { container.encode(`repeat`, forKey: .`repeat`) }
+            init(from decoder: Decoder) { `repeat` = container.decode(Int.self, forKey: .`repeat`) }
+        }
+        """)
+        let visitor = CodingKeysVisitor(typeName: "Outer.Inner", propertyName: "repeat", sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.codingKeyCases.map(\.caseName) == ["repeat"])
+        #expect(visitor.encoderCalls.map(\.propertyKey) == ["repeat"])
+        #expect(visitor.decoderCalls.map(\.propertyKey) == ["repeat"])
+    }
+
+    @Test func nilOwnerStillFindsCodingKeysAcrossNestedTypes() {
+        let sourceFile = Parser.parse(source: """
+        struct Outer {
+            enum CodingKeys { case value }
+            struct Inner { enum CodingKeys { case value } }
+        }
+        """)
+        let visitor = CodingKeysVisitor(typeName: nil, propertyName: "value", sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.codingKeyCases.count == 2)
+    }
+
     @Test func testFindsCodingKeyCase() {
         let source = """
         struct User: Codable {

@@ -67,10 +67,22 @@ struct ReferenceGraphService {
             ? URL(fileURLWithPath: target.file)
             : directoryURL.appendingPathComponent(target.file)
         let targetFile = targetURL.standardizedFileURL.resolvingSymlinksInPath().path
-        let matches = bodies.filter {
+        var matches = bodies.filter {
             $0.declaration.file == targetFile && $0.declaration.name == target.name
                 && $0.declaration.line == target.line && matchesKind($0.declaration.kind, target.type)
                 && (target.parentType == nil || $0.declaration.parentType == target.parentType)
+        }
+        if let identity = target.identity {
+            var currentIdentity: DeclarationIdentity?
+            if let file = parsedFiles.first(where: { $0.url.path == targetFile }) {
+                let visitor = DeclarationVisitor(filePath: targetFile, protocolRequirements: [:], sourceFile: file.sourceFile)
+                visitor.walk(file.sourceFile)
+                currentIdentity = visitor.declarations.compactMap(\.identity).first {
+                    $0.offset == identity.offset && $0.signature == identity.signature
+                        && $0.enclosingTypePath == identity.enclosingTypePath
+                }
+            }
+            matches = currentIdentity == nil ? [] : matches.filter { $0.offset == identity.offset }
         }
         guard matches.count == 1, let root = matches.first else {
             result.warnings.append(matches.isEmpty
@@ -183,10 +195,13 @@ struct ReferenceGraphService {
         if usage.kind == .call {
             let constructedTypes = candidates.filter { ["class", "struct", "enum", "actor"].contains($0.declaration.kind) }
             for type in constructedTypes {
+                let typeName = [type.declaration.parentType, type.declaration.name].compactMap { $0 }.joined(separator: ".")
                 let initializers = (byName["init"] ?? []).filter {
-                    guard $0.declaration.parentType == type.declaration.name else { return false }
+                    guard $0.declaration.parentType == typeName else { return false }
                     let declaredInType = $0.declaration.file == type.declaration.file && $0.lexicalScope.last == type.offset
-                    let declaredInExtension = $0.lexicalScope.isEmpty && type.lexicalScope.isEmpty
+                    let declaredInExtension = $0.lexicalScope.isEmpty && type.lexicalScope.allSatisfy {
+                        ["class", "struct", "enum", "actor", "protocol"].contains(scopeKinds[type.declaration.file]?[$0] ?? "")
+                    }
                     return declaredInType || declaredInExtension
                 }
                 let compatible = initializers.filter { accepts(usage.argumentLabels ?? [], callable: $0) }
@@ -227,7 +242,7 @@ struct ReferenceGraphService {
         }
     }
 
-    private func typeNames(in node: Syntax) -> [String] {
+    private func typeNames(in node: Syntax, parentType: String? = nil) -> [String] {
         let name: String?
         switch node.as(SyntaxEnum.self) {
         case .classDecl(let declaration): name = declaration.name.identifierName
@@ -238,7 +253,11 @@ struct ReferenceGraphService {
         case .typeAliasDecl(let declaration): name = declaration.name.identifierName
         default: name = nil
         }
-        return (name.map { [$0] } ?? []) + node.children(viewMode: .sourceAccurate).flatMap { typeNames(in: $0) }
+        let fullName = name.map { [parentType, $0].compactMap { $0 }.joined(separator: ".") }
+        let context = node.as(ExtensionDeclSyntax.self).map { SwiftTypeName.canonical($0.extendedType) }
+            ?? (node.is(TypeAliasDeclSyntax.self) ? parentType : fullName ?? parentType)
+        return (name.map { [$0] } ?? []) + (fullName.map { [$0] } ?? [])
+            + node.children(viewMode: .sourceAccurate).flatMap { typeNames(in: $0, parentType: context) }
     }
 
     private func declarationOrder(_ lhs: DeclarationReference, _ rhs: DeclarationReference) -> Bool {

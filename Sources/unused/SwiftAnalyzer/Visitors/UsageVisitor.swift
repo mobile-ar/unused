@@ -10,23 +10,40 @@ class UsageVisitor: SyntaxVisitor {
     private(set) var qualifiedMemberUsages = Set<QualifiedUsage>()
     private(set) var unqualifiedMemberUsages = Set<String>()
     private(set) var bareIdentifierUsages = Set<String>()
+    private(set) var typeReferences = Set<TypeReference>()
+
+    var referencedTypeNames: Set<String> {
+        Set(typeReferences.map(\.name))
+    }
 
     private let knownTypeNames: Set<String>
+    private var declaredTypeNames = Set<String>()
+    private var declaredTypePaths = Set<String>()
 
     private var currentTypeName: String?
-    private var typeContextStack: [String?] = []
+    private var enclosingTypePath: [String] = []
+    private var typeContextStack: [[String]] = []
 
     private var scopeStack: [LocalTypeScope] = []
 
     init(viewMode: SyntaxTreeViewMode = .sourceAccurate, knownTypeNames: Set<String> = []) {
-        self.knownTypeNames = knownTypeNames
+        self.knownTypeNames = Set(knownTypeNames.map(SwiftTypeName.normalized))
         super.init(viewMode: viewMode)
+    }
+
+    override func visit(_ node: SourceFileSyntax) -> SyntaxVisitorContinueKind {
+        declaredTypePaths = Self.collectDeclaredTypePaths(Syntax(node))
+        declaredTypeNames = Set(declaredTypePaths.compactMap { $0.split(separator: ".").last.map(String.init) })
+        return .visitChildren
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
         let name = node.baseName.identifierName
         usedIdentifiers.insert(name)
         bareIdentifierUsages.insert(name)
+        if isKnownTypeName(name) {
+            recordTypeReference(name, at: node)
+        }
         return .visitChildren
     }
 
@@ -41,6 +58,16 @@ class UsageVisitor: SyntaxVisitor {
 
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
         let memberName = node.declName.baseName.identifierName
+        if let name = expressionName(ExprSyntax(node)), isKnownTypeName(name) {
+            recordTypeReference(name, at: node)
+            if let base = node.base {
+                walk(base)
+            }
+            return .skipChildren
+        }
+        if memberName == "self", let base = node.base, let name = expressionName(base) {
+            recordTypeReference(name, at: node)
+        }
         usedIdentifiers.insert(memberName)
 
         if let baseRef = extractBaseIdentifier(from: node.base) {
@@ -55,11 +82,13 @@ class UsageVisitor: SyntaxVisitor {
                 unqualifiedMemberUsages.insert(memberName)
             } else if let resolvedType = resolveLocalType(baseName) {
                 qualifiedMemberUsages.insert(QualifiedUsage(typeName: resolvedType, memberName: memberName))
-            } else if knownTypeNames.contains(baseName) {
-                qualifiedMemberUsages.insert(QualifiedUsage(typeName: baseName, memberName: memberName))
+            } else if isKnownTypeName(baseName) {
+                qualifiedMemberUsages.insert(QualifiedUsage(typeName: resolveTypeName(baseName), memberName: memberName))
             } else {
                 unqualifiedMemberUsages.insert(memberName)
             }
+        } else if let base = node.base, let baseName = expressionName(base), isKnownTypeName(baseName) {
+            qualifiedMemberUsages.insert(QualifiedUsage(typeName: resolveTypeName(baseName), memberName: memberName))
         } else {
             unqualifiedMemberUsages.insert(memberName)
         }
@@ -103,8 +132,23 @@ class UsageVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
-        usedIdentifiers.insert(node.name.identifierName)
+        recordTypeReference(SwiftTypeName.canonical(TypeSyntax(node)), at: node)
         return .visitChildren
+    }
+
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        recordTypeReference(SwiftTypeName.canonical(TypeSyntax(node)), at: node)
+        // Visit qualifiers and specialization arguments, but never record the
+        // member's leaf name as a global, unqualified type reference.
+        walk(node.baseType)
+        if let arguments = node.genericArgumentClause {
+            walk(arguments)
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: SuppressedTypeSyntax) -> SyntaxVisitorContinueKind {
+        .skipChildren
     }
 
     override func visit(_ node: TypeAnnotationSyntax) -> SyntaxVisitorContinueKind {
@@ -131,19 +175,7 @@ class UsageVisitor: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visit(_ node: TypeExprSyntax) -> SyntaxVisitorContinueKind {
-        if let identType = node.type.as(IdentifierTypeSyntax.self) {
-            usedIdentifiers.insert(identType.name.identifierName)
-        }
-        return .visitChildren
-    }
 
-    override func visit(_ node: InheritedTypeSyntax) -> SyntaxVisitorContinueKind {
-        if let identType = node.type.as(IdentifierTypeSyntax.self) {
-            usedIdentifiers.insert(identType.name.identifierName)
-        }
-        return .visitChildren
-    }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         pushTypeContext(name: node.name.text)
@@ -181,9 +213,18 @@ class UsageVisitor: SyntaxVisitor {
         popTypeContext()
     }
 
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ProtocolDeclSyntax) {
+        popTypeContext()
+    }
+
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        let name = extractTypeName(from: node.extendedType)
-        pushTypeContext(name: name)
+        let name = SwiftTypeName.canonical(node.extendedType)
+        pushTypeContext(name: name, isExtension: true)
         return .visitChildren
     }
 
@@ -349,8 +390,8 @@ class UsageVisitor: SyntaxVisitor {
     }
 
     private func extractSimpleTypeName(from type: TypeSyntax) -> String? {
-        if let identifier = type.as(IdentifierTypeSyntax.self) {
-            return identifier.name.text
+        if type.is(IdentifierTypeSyntax.self) || type.is(MemberTypeSyntax.self) {
+            return resolveTypeName(SwiftTypeName.canonical(type))
         }
         if let optional = type.as(OptionalTypeSyntax.self) {
             return extractSimpleTypeName(from: optional.wrappedType)
@@ -367,31 +408,103 @@ class UsageVisitor: SyntaxVisitor {
     private func inferTypeFromInitializer(_ initializer: InitializerClauseSyntax?) -> String? {
         guard let initializer else { return nil }
         let value = initializer.value
-        if let call = value.as(FunctionCallExprSyntax.self) {
-            if let identExpr = call.calledExpression.as(DeclReferenceExprSyntax.self) {
-                let name = identExpr.baseName.text
-                if knownTypeNames.contains(name) {
-                    return name
-                }
-            }
+        if let call = value.as(FunctionCallExprSyntax.self),
+            let name = expressionName(call.calledExpression), isKnownTypeName(name) {
+            return resolveTypeName(name)
         }
         return nil
     }
 
-    private func extractTypeName(from type: TypeSyntax) -> String {
-        if let identifierType = type.as(IdentifierTypeSyntax.self) {
-            return identifierType.name.text
-        }
-        return type.trimmedDescription
+    private func isKnownTypeName(_ name: String) -> Bool {
+        let resolvedName = resolveTypeName(name)
+        return knownTypeNames.contains(resolvedName) || declaredTypePaths.contains(resolvedName)
+            || (!name.contains(".") && declaredTypeNames.contains(name))
     }
 
-    private func pushTypeContext(name: String) {
-        typeContextStack.append(currentTypeName)
-        currentTypeName = name
+    private func resolveTypeName(_ name: String) -> String {
+        for count in stride(from: enclosingTypePath.count, through: 0, by: -1) {
+            let candidate = (Array(enclosingTypePath.prefix(count)) + [name]).joined(separator: ".")
+            if knownTypeNames.contains(candidate) || declaredTypePaths.contains(candidate) {
+                return candidate
+            }
+        }
+        return name
+    }
+
+    private func expressionName(_ expression: ExprSyntax) -> String? {
+        if let reference = expression.as(DeclReferenceExprSyntax.self) {
+            return reference.baseName.identifierName
+        }
+        if let member = expression.as(MemberAccessExprSyntax.self), let base = member.base,
+            let baseName = expressionName(base) {
+            return baseName + "." + member.declName.baseName.identifierName
+        }
+        if let specialization = expression.as(GenericSpecializationExprSyntax.self) {
+            return expressionName(specialization.expression)
+        }
+        return nil
+    }
+
+    private static func collectDeclaredTypePaths(_ syntax: Syntax, path: [String] = []) -> Set<String> {
+        var names = Set<String>()
+        var childPath = path
+        if let declaration = syntax.as(TypeAliasDeclSyntax.self) {
+            names.insert((path + [declaration.name.identifierName]).joined(separator: "."))
+        } else if let declaration = syntax.as(ClassDeclSyntax.self) {
+            childPath.append(declaration.name.identifierName)
+            names.insert(childPath.joined(separator: "."))
+        } else if let declaration = syntax.as(StructDeclSyntax.self) {
+            childPath.append(declaration.name.identifierName)
+            names.insert(childPath.joined(separator: "."))
+        } else if let declaration = syntax.as(EnumDeclSyntax.self) {
+            childPath.append(declaration.name.identifierName)
+            names.insert(childPath.joined(separator: "."))
+        } else if let declaration = syntax.as(ActorDeclSyntax.self) {
+            childPath.append(declaration.name.identifierName)
+            names.insert(childPath.joined(separator: "."))
+        } else if let declaration = syntax.as(ProtocolDeclSyntax.self) {
+            childPath.append(declaration.name.identifierName)
+            names.insert(childPath.joined(separator: "."))
+        } else if let declaration = syntax.as(ExtensionDeclSyntax.self) {
+            childPath = SwiftTypeName.canonical(declaration.extendedType).split(separator: ".").map(String.init)
+        }
+        for child in syntax.children(viewMode: .sourceAccurate) {
+            names.formUnion(collectDeclaredTypePaths(child, path: childPath))
+        }
+        return names
+    }
+
+    private func recordTypeReference(_ name: String, at node: some SyntaxProtocol) {
+        let name = SwiftTypeName.normalized(name)
+        usedIdentifiers.insert(name)
+        var scopes: [Int] = []
+        var ancestor = node.parent
+        while let syntax = ancestor {
+            if syntax.is(FunctionDeclSyntax.self) || syntax.is(InitializerDeclSyntax.self)
+                || syntax.is(SubscriptDeclSyntax.self) || syntax.is(ClosureExprSyntax.self)
+                || syntax.is(CodeBlockSyntax.self) || syntax.is(SwitchCaseSyntax.self)
+                || syntax.is(AccessorBlockSyntax.self) {
+                scopes.append(syntax.positionAfterSkippingLeadingTrivia.utf8Offset)
+            }
+            ancestor = syntax.parent
+        }
+        typeReferences.insert(TypeReference(
+            name: name,
+            enclosingTypePath: enclosingTypePath,
+            lexicalScope: Array(scopes.reversed())
+        ))
+    }
+
+    private func pushTypeContext(name: String, isExtension: Bool = false) {
+        typeContextStack.append(enclosingTypePath)
+        let path = SwiftTypeName.normalized(name).split(separator: ".").map(String.init)
+        enclosingTypePath = isExtension ? path : enclosingTypePath + path
+        currentTypeName = enclosingTypePath.joined(separator: ".")
     }
 
     private func popTypeContext() {
-        currentTypeName = typeContextStack.popLast() ?? nil
+        enclosingTypePath = typeContextStack.popLast() ?? []
+        currentTypeName = enclosingTypePath.isEmpty ? nil : enclosingTypePath.joined(separator: ".")
     }
 
     private func pushScope() {
@@ -404,7 +517,7 @@ class UsageVisitor: SyntaxVisitor {
 
     private func addLocalType(name: String, typeName: String?) {
         guard !scopeStack.isEmpty else { return }
-        scopeStack[scopeStack.count - 1].typeMap[name] = typeName
+        scopeStack[scopeStack.count - 1].typeMap[SwiftTypeName.normalized(name)] = typeName.map(SwiftTypeName.normalized)
     }
 
     private func resolveLocalType(_ name: String) -> String? {

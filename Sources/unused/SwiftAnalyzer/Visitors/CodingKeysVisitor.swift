@@ -29,7 +29,7 @@ final class CodingKeysVisitor: SyntaxVisitor {
     private var currentTypeName: String?
     private var insideCodingKeysEnum: Bool = false
     private var insideTargetType: Bool = false
-    private var typeContextStack: [(typeName: String?, insideTarget: Bool)] = []
+    private var typeContextStack: [(typeName: String?, insideTarget: Bool, insideCodingKeys: Bool)] = []
 
     init(
         typeName: String?,
@@ -37,8 +37,8 @@ final class CodingKeysVisitor: SyntaxVisitor {
         sourceFile: SourceFileSyntax,
         fileName: String = "source.swift"
     ) {
-        self.typeName = typeName
-        self.propertyName = propertyName
+        self.typeName = typeName.map(SwiftTypeName.normalized)
+        self.propertyName = SwiftTypeName.normalized(propertyName)
         self.locationConverter = SourceLocationConverter(fileName: fileName, tree: sourceFile)
         super.init(viewMode: .sourceAccurate)
     }
@@ -59,26 +59,27 @@ final class CodingKeysVisitor: SyntaxVisitor {
         return start...end
     }
 
-    private func pushTypeContext(name: String) {
-        typeContextStack.append((typeName: currentTypeName, insideTarget: insideTargetType))
-        currentTypeName = name
-        if typeName == nil || currentTypeName == typeName {
-            insideTargetType = true
-        }
+    private func pushTypeContext(name: String, isExtension: Bool = false) {
+        typeContextStack.append((typeName: currentTypeName, insideTarget: insideTargetType, insideCodingKeys: insideCodingKeysEnum))
+        currentTypeName = isExtension ? name : [currentTypeName, name].compactMap { $0 }.joined(separator: ".")
+        insideTargetType = typeName == nil || currentTypeName == typeName
+        insideCodingKeysEnum = false
     }
 
     private func popTypeContext() {
         if let previous = typeContextStack.popLast() {
             currentTypeName = previous.typeName
             insideTargetType = previous.insideTarget
+            insideCodingKeysEnum = previous.insideCodingKeys
         } else {
             currentTypeName = nil
             insideTargetType = false
+            insideCodingKeysEnum = false
         }
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushTypeContext(name: node.name.text)
+        pushTypeContext(name: node.name.identifierName)
         return .visitChildren
     }
 
@@ -87,7 +88,7 @@ final class CodingKeysVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushTypeContext(name: node.name.text)
+        pushTypeContext(name: node.name.identifierName)
         return .visitChildren
     }
 
@@ -96,24 +97,18 @@ final class CodingKeysVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        if node.name.text == "CodingKeys" && insideTargetType {
-            insideCodingKeysEnum = true
-        } else {
-            pushTypeContext(name: node.name.text)
-        }
+        let isTargetCodingKeys = node.name.identifierName == "CodingKeys" && insideTargetType
+        pushTypeContext(name: node.name.identifierName)
+        insideCodingKeysEnum = isTargetCodingKeys
         return .visitChildren
     }
 
     override func visitPost(_ node: EnumDeclSyntax) {
-        if node.name.text == "CodingKeys" {
-            insideCodingKeysEnum = false
-        } else {
-            popTypeContext()
-        }
+        popTypeContext()
     }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushTypeContext(name: node.name.text)
+        pushTypeContext(name: node.name.identifierName)
         return .visitChildren
     }
 
@@ -121,9 +116,17 @@ final class CodingKeysVisitor: SyntaxVisitor {
         popTypeContext()
     }
 
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ProtocolDeclSyntax) {
+        popTypeContext()
+    }
+
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        let extendedTypeName = extractTypeName(from: node.extendedType)
-        pushTypeContext(name: extendedTypeName)
+        pushTypeContext(name: SwiftTypeName.canonical(node.extendedType), isExtension: true)
         return .visitChildren
     }
 
@@ -137,7 +140,7 @@ final class CodingKeysVisitor: SyntaxVisitor {
         }
 
         for element in node.elements {
-            let caseName = element.name.text
+            let caseName = element.name.identifierName
             if caseName == propertyName {
                 let lineRange = getLineRange(for: node)
                 let sourceText = node.trimmedDescription
@@ -162,7 +165,7 @@ final class CodingKeysVisitor: SyntaxVisitor {
             return .visitChildren
         }
 
-        let methodName = memberAccess.declName.baseName.text
+        let methodName = memberAccess.declName.baseName.identifierName
 
         let isEncode = methodName == "encode" || methodName == "encodeIfPresent"
         let isDecode = methodName == "decode" || methodName == "decodeIfPresent"
@@ -172,16 +175,16 @@ final class CodingKeysVisitor: SyntaxVisitor {
         }
 
         if let base = memberAccess.base?.as(DeclReferenceExprSyntax.self) {
-            let baseName = base.baseName.text
+            let baseName = base.baseName.identifierName
             guard baseName == "container" else {
                 return .visitChildren
             }
         }
 
         for argument in node.arguments {
-            if argument.label?.text == "forKey" {
+            if argument.label?.identifierName == "forKey" {
                 if let keyExpr = argument.expression.as(MemberAccessExprSyntax.self) {
-                    let keyName = keyExpr.declName.baseName.text
+                    let keyName = keyExpr.declName.baseName.identifierName
                     if keyName == propertyName {
                         let lineRange = getLineRange(for: node)
                         let sourceText = node.trimmedDescription
@@ -205,10 +208,5 @@ final class CodingKeysVisitor: SyntaxVisitor {
         return .visitChildren
     }
 
-    private func extractTypeName(from type: TypeSyntax) -> String {
-        if let identifierType = type.as(IdentifierTypeSyntax.self) {
-            return identifierType.name.text
-        }
-        return type.trimmedDescription
-    }
+
 }

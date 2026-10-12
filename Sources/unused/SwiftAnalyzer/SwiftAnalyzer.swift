@@ -26,6 +26,15 @@ class SwiftAnalyzer {
     private var unusedParameterDeclarations: [Declaration] = []
     private var unusedImportDeclarations: [Declaration] = []
     private var moduleSymbolCache: [String: Set<String>] = [:]
+    private var protocolDefinitions: [String: ProtocolDefinition] = [:]
+    private var typeInheritance: [String: Set<String>] = [:]
+    private var typeKinds: [String: String] = [:]
+    private var typeAliases: [String: Set<String>] = [:]
+    private var unresolvedProtocols: Set<String> = []
+    private var witnessResolution = WitnessResolution()
+    private var typeReferences: Set<TypeReference> = []
+    private var usedTypeIdentities: Set<DeclarationIdentity> = []
+    private let moduleName: String?
     private let options: AnalyzerOptions
     private let directory: String
     private let swiftInterfaceClient: SwiftInterfaceClient
@@ -37,6 +46,7 @@ class SwiftAnalyzer {
         directory: String,
         swiftInterfaceClient: SwiftInterfaceClient = SwiftInterfaceClient(),
         excludedTestFileCount: Int = 0,
+        moduleName: String? = nil,
         progressTrackerFactory: @escaping @Sendable (Int, String) -> ProgressTracker = {
             ProgressTracker(total: $0, prefix: $1)
         }
@@ -45,6 +55,7 @@ class SwiftAnalyzer {
         self.directory = directory
         self.swiftInterfaceClient = swiftInterfaceClient
         self.excludedTestFileCount = excludedTestFileCount
+        self.moduleName = moduleName
         self.progressTrackerFactory = progressTrackerFactory
     }
 
@@ -131,8 +142,10 @@ class SwiftAnalyzer {
         // Resolve external protocols via SwiftInterface
         await resolveExternalProtocols()
 
-        // Propagate inherited protocol requirements transitively
-        resolveInheritedRequirements()
+
+        for name in protocolExtensionUsedMembers.keys {
+            protocolExtensionUsedMembers[name]?.formIntersection(protocolRequirements[name] ?? [])
+        }
 
         // Propagate protocol extension used members through inheritance
         resolveInheritedExtensionUsedMembers()
@@ -145,12 +158,14 @@ class SwiftAnalyzer {
         let declTracker = progressTrackerFactory(parsedFileCount, "Collecting declarations...")
         let declarationResults: [DeclarationVisitorResult] = await withTaskGroup(of: DeclarationVisitorResult.self) { group in
             let requirements = protocolRequirements
+            let moduleName = moduleName
             for parsed in parsedFiles {
                 group.addTask {
                     let visitor = DeclarationVisitor(
                         filePath: parsed.url.path,
                         protocolRequirements: requirements,
-                        sourceFile: parsed.sourceFile
+                        sourceFile: parsed.sourceFile,
+                        moduleName: moduleName
                     )
                     visitor.walk(parsed.sourceFile)
                     return DeclarationVisitorResult(
@@ -173,6 +188,7 @@ class SwiftAnalyzer {
 
         // Merge declaration results
         mergeDeclarationResults(declarationResults)
+        resolveWitnessProviders()
 
         // Post-process: mark enum cases belonging to CaseIterable enums
         markCaseIterableEnumCases()
@@ -181,12 +197,17 @@ class SwiftAnalyzer {
         let paramTracker = progressTrackerFactory(parsedFileCount, "Checking parameters...")
         let parameterResults: [[Declaration]] = await withTaskGroup(of: [Declaration].self) { group in
             let requirements = protocolRequirements
+            let protectedCallables = witnessResolution.required.union(witnessResolution.uncertain)
+            let moduleName = moduleName
             for parsed in parsedFiles {
                 group.addTask {
                     let visitor = UnusedParameterVisitor(
                         filePath: parsed.url.path,
                         protocolRequirements: requirements,
-                        sourceFile: parsed.sourceFile
+                        sourceFile: parsed.sourceFile,
+                        protectedCallables: protectedCallables,
+                        usesGlobalWitnessResolution: true,
+                        moduleName: moduleName
                     )
                     visitor.walk(parsed.sourceFile)
                     return visitor.unusedParameters
@@ -207,7 +228,10 @@ class SwiftAnalyzer {
         }
 
         // Step 5: Collect usage, write-only, and per-file import info in parallel
-        let knownTypeNames = Set(declarations.filter { $0.type == .class }.map(\.name))
+        let knownTypeNames = Set(declarations.filter { [.class, .protocol, .typealias].contains($0.type) }.flatMap {
+            let name = (($0.identity?.enclosingTypePath ?? []) + [$0.name]).joined(separator: ".")
+            return $0.identity?.moduleName.map { [name, $0 + "." + name] } ?? [name]
+        })
         let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
         let allTypePropertyDeclarations = typePropertyDeclarations
 
@@ -224,7 +248,12 @@ class SwiftAnalyzer {
                         usedIdentifiers: usageVisitor.usedIdentifiers,
                         qualifiedMemberUsages: usageVisitor.qualifiedMemberUsages,
                         unqualifiedMemberUsages: usageVisitor.unqualifiedMemberUsages,
-                        bareIdentifierUsages: usageVisitor.bareIdentifierUsages
+                        bareIdentifierUsages: usageVisitor.bareIdentifierUsages,
+                        typeReferences: Set(usageVisitor.typeReferences.map { reference in
+                            var reference = reference
+                            reference.file = parsed.url.path
+                            return reference
+                        })
                     )
 
                     // Write-only visitor (runs on the same AST in the same task)
@@ -269,11 +298,13 @@ class SwiftAnalyzer {
             qualifiedMemberUsages.formUnion(usageResult.qualifiedMemberUsages)
             unqualifiedMemberUsages.formUnion(usageResult.unqualifiedMemberUsages)
             bareIdentifierUsages.formUnion(usageResult.bareIdentifierUsages)
+            typeReferences.formUnion(usageResult.typeReferences)
             allPropertyReads.formUnion(writeOnlyResult.propertyReads)
             allPropertyWrites.formUnion(writeOnlyResult.propertyWrites)
             allImportUsageResults.append(importResult)
         }
 
+        usedTypeIdentities = TypeReferenceResolver(declarations: declarations).resolve(typeReferences)
         writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
 
         // Remove properties that are read via protocol extensions from write-only set.
@@ -307,6 +338,20 @@ class SwiftAnalyzer {
             for (protocolName, members) in result.protocolExtensionUsedMembers {
                 protocolExtensionUsedMembers[protocolName, default: Set()].formUnion(members)
             }
+            for (name, definition) in result.protocolDefinitions {
+                var merged = protocolDefinitions[name] ?? ProtocolDefinition(name: name)
+                merged.requirements.formUnion(definition.requirements)
+                merged.inheritedTypes.formUnion(definition.inheritedTypes)
+                merged.isComplete = merged.isComplete && definition.isComplete
+                protocolDefinitions[name] = merged
+            }
+            for (name, parents) in result.typeInheritance {
+                typeInheritance[name, default: []].formUnion(parents)
+            }
+            for (name, targets) in result.typeAliases {
+                typeAliases[name, default: []].formUnion(targets)
+            }
+            typeKinds.merge(result.typeKinds, uniquingKeysWith: { first, _ in first })
             projectDefinedProtocols.formUnion(result.projectDefinedProtocols)
             importedModules.formUnion(result.importedModules)
             conformedProtocols.formUnion(result.conformedProtocols)
@@ -333,25 +378,46 @@ class SwiftAnalyzer {
             projectDefinedProtocols: projectDefinedProtocols,
             importedModules: importedModules,
             conformedProtocols: conformedProtocols,
-            swiftInterfaceClient: swiftInterfaceClient
+            swiftInterfaceClient: swiftInterfaceClient,
+            protocolDefinitions: protocolDefinitions,
+            typeInheritance: typeInheritance,
+            typeKinds: typeKinds,
+            typeAliases: typeAliases
         )
         await resolver.resolveExternalProtocols()
-        protocolRequirements = resolver.protocolRequirements
-        protocolInheritance = resolver.protocolInheritance
-    }
-
-    private func resolveInheritedRequirements() {
-        let resolver = ProtocolResolver(
-            protocolRequirements: protocolRequirements,
-            protocolInheritance: protocolInheritance,
-            projectDefinedProtocols: projectDefinedProtocols,
-            importedModules: importedModules,
-            conformedProtocols: conformedProtocols,
-            swiftInterfaceClient: swiftInterfaceClient
-        )
         resolver.resolveInheritedRequirements()
         protocolRequirements = resolver.protocolRequirements
         protocolInheritance = resolver.protocolInheritance
+        protocolDefinitions = resolver.protocolDefinitions
+        typeKinds.merge(resolver.externalTypeKinds, uniquingKeysWith: { first, _ in first })
+        unresolvedProtocols = Set(resolver.resolutionStatuses.filter { $0.value != .resolved }.map(\.key))
+    }
+
+
+    private func resolveWitnessProviders() {
+        witnessResolution = WitnessResolver(
+            protocolDefinitions: protocolDefinitions, typeInheritance: typeInheritance,
+            typeKinds: typeKinds, typeAliases: typeAliases, unresolvedProtocols: unresolvedProtocols
+        ).resolve(declarations: declarations)
+        for (name, protocols) in witnessResolution.typeConformances {
+            typeProtocolConformance[name, default: []].formUnion(protocols)
+        }
+        declarations = declarations.map { declaration in
+            guard let identity = declaration.identity else { return declaration }
+            let reason: ExclusionReason
+            if witnessResolution.required.contains(identity) {
+                reason = declaration.exclusionReason == .none || declaration.exclusionReason == .protocolImplementation
+                    ? .protocolImplementation : declaration.exclusionReason
+            } else if witnessResolution.uncertain.contains(identity) {
+                reason = .unresolvedProtocol
+            } else {
+                reason = declaration.exclusionReason == .protocolImplementation ? .none : declaration.exclusionReason
+            }
+            return Declaration(
+                name: declaration.name, type: declaration.type, file: declaration.file, line: declaration.line,
+                exclusionReason: reason, parentType: declaration.parentType, identity: identity
+            )
+        }
     }
 
     private func resolveInheritedExtensionUsedMembers() {
@@ -436,6 +502,8 @@ class SwiftAnalyzer {
             return false // CaseIterable enum cases are excluded by default
         case .mainAttribute:
             return false // @main types are entry points and are excluded by default
+        case .unresolvedProtocol:
+            return false
         case .none:
             return true
         }
@@ -443,6 +511,15 @@ class SwiftAnalyzer {
 
     private func isUsed(_ declaration: Declaration) -> Bool {
         let name = declaration.name
+        if options.includeProtocols, let identity = declaration.identity,
+           witnessResolution.required.contains(identity),
+           let owner = identity.ownerName,
+           typeProtocolConformance[owner]?.contains(where: { !projectDefinedProtocols.contains($0) }) == true {
+            return true
+        }
+        if [.class, .protocol, .typealias].contains(declaration.type), let identity = declaration.identity {
+            return usedTypeIdentities.contains(identity)
+        }
 
         guard let parentType = declaration.parentType else {
             return usedIdentifiers.contains(name)
@@ -476,13 +553,7 @@ class SwiftAnalyzer {
                 return true
             }
 
-            // For external protocols (not defined in the project), assume all
-            // requirements are used since we cannot inspect their extensions
-            if !projectDefinedProtocols.contains(protocolName) {
-                if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
-                    return true
-                }
-            }
+
         }
 
         return false
@@ -508,7 +579,8 @@ class SwiftAnalyzer {
                 file: declaration.file,
                 line: declaration.line,
                 exclusionReason: .caseIterable,
-                parentType: declaration.parentType
+                parentType: declaration.parentType,
+                identity: declaration.identity
             )
         }
     }
@@ -686,6 +758,8 @@ class SwiftAnalyzer {
         let writeOnlyVariables = declarations.filter {
             $0.type == .variable &&
             isUsed($0) &&
+            shouldInclude($0) &&
+            $0.exclusionReason != .protocolImplementation &&
             isWriteOnlyProperty($0)
         }.map { declaration in
             Declaration(
@@ -694,7 +768,8 @@ class SwiftAnalyzer {
                 file: declaration.file,
                 line: declaration.line,
                 exclusionReason: .writeOnly,
-                parentType: declaration.parentType
+                parentType: declaration.parentType,
+                identity: declaration.identity
             )
         }
 
@@ -706,8 +781,8 @@ class SwiftAnalyzer {
         }
         let excludedProtocols = declarations.filter {
             !isUsed($0) &&
-            $0.exclusionReason == .protocolImplementation &&
-            !options.includeProtocols
+            ($0.exclusionReason == .protocolImplementation && !options.includeProtocols
+                || $0.exclusionReason == .unresolvedProtocol)
         }
         let excludedObjc = declarations.filter {
             !isUsed($0) &&
@@ -765,7 +840,8 @@ class SwiftAnalyzer {
             unused: unusedItems,
             excluded: excludedItems,
             options: ReportOptions(from: options),
-            testFilesExcluded: excludedTestFileCount
+            testFilesExcluded: excludedTestFileCount,
+            warnings: witnessResolution.warnings
         )
     }
 

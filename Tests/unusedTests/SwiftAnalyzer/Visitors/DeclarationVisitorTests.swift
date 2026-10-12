@@ -1297,7 +1297,7 @@ struct DeclarationVisitorTests {
 
         let enumCases = visitor.declarations.filter { $0.type == .enumCase }
         #expect(enumCases.count == 3)
-        #expect(enumCases.allSatisfy { $0.parentType == "State" })
+        #expect(enumCases.allSatisfy { $0.parentType == "ViewController.State" })
     }
 
     @Test

@@ -2,57 +2,61 @@
 //  Created by Fernando Romiti on 18/01/2026.
 //
 
-import Foundation
-
 actor SwiftInterfaceClient: Sendable {
+    private static let sdkParser = SwiftInterfaceParser()
+    private let interfaceCache: SDKInterfaceCache
 
-    private lazy var parser: SwiftInterfaceParser? = SwiftInterfaceParser()
-
-    /// Get protocol requirements by querying the module interface
-    /// - Parameters:
-    ///   - protocolName: The name of the protocol
-    ///   - moduleName: The module containing the protocol (e.g., "Swift", "Foundation")
-    /// - Returns: A set of method/property names required by the protocol, or nil if unavailable
-    func getProtocolRequirements(protocolName: String, inModule moduleName: String) -> Set<String>? {
-        return parser?.getProtocolRequirements(protocolName: protocolName, inModule: moduleName)
+    init(moduleInterfaceProvider: (@Sendable (String) -> String?)? = nil) {
+        if let moduleInterfaceProvider {
+            self.interfaceCache = SDKInterfaceCache(moduleInterfaceProvider: moduleInterfaceProvider)
+        } else {
+            self.interfaceCache = .shared
+        }
     }
 
-    /// Get parent protocols of a protocol by querying the module interface
-    /// - Parameters:
-    ///   - protocolName: The name of the protocol
-    ///   - moduleName: The module containing the protocol (e.g., "Swift", "Foundation")
-    /// - Returns: A set of parent protocol names, or nil if unavailable
-    func getProtocolParents(protocolName: String, inModule moduleName: String) -> Set<String>? {
-        return parser?.getProtocolParents(protocolName: protocolName, inModule: moduleName)
+    init(interfaceCache: SDKInterfaceCache) {
+        self.interfaceCache = interfaceCache
     }
 
-    /// Get all property wrapper type names from a module
-    /// - Parameter moduleName: The name of the module to query
-    /// - Returns: A set of property wrapper type names, or nil if the module is unavailable
-    func getPropertyWrappers(inModule moduleName: String) -> Set<String>? {
-        return parser?.getPropertyWrappers(inModule: moduleName)
+    static func loadSDKModuleInterface(_ moduleName: String) -> String? {
+        sdkParser?.getModuleInterface(moduleName: moduleName)
     }
 
-    /// Get all exported symbol names from a module
-    /// - Parameter moduleName: The name of the module to query
-    /// - Returns: A set of exported symbol names, or nil if the module is unavailable
-    func getExportedSymbols(inModule moduleName: String) -> Set<String>? {
-        return parser?.getExportedSymbols(inModule: moduleName)
+    func getProtocolDefinition(protocolName: String, inModule moduleName: String) async -> ProtocolDefinition? {
+        (await interfaceCache.index(forModule: moduleName))?.protocolDefinition(named: protocolName)
     }
 
-    /// Get all property wrappers from multiple modules
-    /// - Parameter moduleNames: The set of module names to query
-    /// - Returns: A combined set of all property wrapper type names found
-    func getAllPropertyWrappers(fromModules moduleNames: Set<String>) -> Set<String> {
-        var allPropertyWrappers = Set<String>()
+    func getProtocolRequirements(protocolName: String, inModule moduleName: String) async -> Set<String>? {
+        (await getProtocolDefinition(protocolName: protocolName, inModule: moduleName)).map { definition in
+            Set(definition.requirements.map(\.name))
+        }
+    }
 
-        for moduleName in moduleNames {
-            if let wrappers = parser?.getPropertyWrappers(inModule: moduleName) {
-                allPropertyWrappers.formUnion(wrappers)
+    func getProtocolParents(protocolName: String, inModule moduleName: String) async -> Set<String>? {
+        (await getProtocolDefinition(protocolName: protocolName, inModule: moduleName)).map { definition in
+            Set(definition.inheritedTypes.map(SDKInterfaceTypeReferences.leafName))
+        }
+    }
+
+    func getTypeKind(typeName: String, inModule moduleName: String) async -> String? {
+        (await interfaceCache.index(forModule: moduleName))?.typeKind(named: typeName)
+    }
+
+    func getPropertyWrappers(inModule moduleName: String) async -> Set<String>? {
+        await interfaceCache.wrappers(forModule: moduleName)
+    }
+
+    func getExportedSymbols(inModule moduleName: String) async -> Set<String>? {
+        (await interfaceCache.index(forModule: moduleName))?.exportedSymbols
+    }
+
+    func getAllPropertyWrappers(fromModules moduleNames: Set<String>) async -> Set<String> {
+        var propertyWrappers = Set<String>()
+        for moduleName in moduleNames.sorted() {
+            if let wrappers = await getPropertyWrappers(inModule: moduleName) {
+                propertyWrappers.formUnion(wrappers)
             }
         }
-
-        return allPropertyWrappers
+        return propertyWrappers
     }
-
 }

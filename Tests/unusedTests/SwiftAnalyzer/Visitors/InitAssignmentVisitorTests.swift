@@ -9,6 +9,65 @@ import SwiftSyntax
 
 struct InitAssignmentVisitorTests {
 
+    @Test func nestedReportOwnersFindOnlyTheirOwnInitializerAssignments() throws {
+        let sourceFile = Parser.parse(source: """
+        struct Outer {
+            var value: Int
+            init(outer: Int) { self.value = outer }
+            struct Inner {
+                var value: Int
+                init(inner: Int) { self.value = inner }
+            }
+            init(restored: Int) { self.value = restored }
+        }
+        struct Other {
+            struct Inner {
+                var value: Int
+                init(unrelated: Int) { self.value = unrelated }
+            }
+        }
+        """)
+        let declarations = DeclarationVisitor(filePath: "test.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        declarations.walk(sourceFile)
+        let property = try #require(declarations.declarations.first { $0.name == "value" && $0.parentType == "Outer.Inner" })
+        let report = ReportItem(id: 1, declaration: property)
+        let visitor = InitAssignmentVisitor(propertyName: report.name, typeName: report.parentType, sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.assignments.map(\.assignedFromParameter) == ["inner"])
+        #expect(visitor.initParameters["inner"]?.usedOnlyForPropertyAssignment == true)
+        #expect(visitor.initParameters["outer"] == nil)
+        #expect(visitor.initParameters["unrelated"] == nil)
+        let outer = InitAssignmentVisitor(propertyName: "value", typeName: "Outer", sourceFile: sourceFile)
+        outer.walk(sourceFile)
+        #expect(outer.assignments.map(\.assignedFromParameter) == ["outer", "restored"])
+    }
+
+    @Test func qualifiedExtensionsNormalizeEscapedOwnerPropertiesAndParameters() {
+        let sourceFile = Parser.parse(source: """
+        struct `Outer` { struct `Inner`<T> { var `repeat`: Int } }
+        extension `Outer`.`Inner`<Int> {
+            init(`class` `default`: Int) { self.`repeat` = `default` }
+        }
+        """)
+        let visitor = InitAssignmentVisitor(propertyName: "repeat", typeName: "Outer.Inner", sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.assignments.count == 1)
+        #expect(visitor.assignments.first?.assignedFromParameter == "default")
+        #expect(visitor.initParameters["default"]?.usedOnlyForPropertyAssignment == true)
+    }
+
+    @Test func nilOwnerStillFindsAssignmentsInAllNestedTypes() {
+        let sourceFile = Parser.parse(source: """
+        struct Outer {
+            init(first: Int) { self.value = first }
+            struct Inner { init(second: Int) { self.value = second } }
+        }
+        """)
+        let visitor = InitAssignmentVisitor(propertyName: "value", typeName: nil, sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.assignments.map(\.assignedFromParameter) == ["first", "second"])
+    }
+
     @Test func testFindsSimpleSelfAssignment() {
         let source = """
         struct User {

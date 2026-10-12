@@ -11,6 +11,9 @@ import Foundation
 struct XcodeFormatter {
 
     static func display(report: Report) {
+        for warning in report.warnings {
+            print("warning: \(warning)")
+        }
         for item in report.unused {
             printWarning(for: item)
         }

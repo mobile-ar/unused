@@ -202,9 +202,9 @@ struct ReferenceGraphVisitorTests {
         """)
         let members = bodies.filter { $0.declaration.kind != "file scope" }
         #expect(members.map(\.declaration.name) == ["value", "execute"])
-        #expect(members.allSatisfy { $0.declaration.parentType == "Container" })
+        #expect(members.allSatisfy { $0.declaration.parentType == "Namespace.Container" })
         #expect(try body("<file scope>", in: bodies).references.map(\.name) == ["Container", "Namespace"])
-        #expect(try body("execute", in: bodies).references.allSatisfy { $0.receiverType == "Container" })
+        #expect(try body("execute", in: bodies).references.allSatisfy { $0.receiverType == "Namespace.Container" })
     }
 
     @Test func parametersLocalsAndClosureParametersBlockNameFallback() throws {
@@ -406,8 +406,8 @@ struct ReferenceGraphVisitorTests {
         #expect(try body("Outer", in: bodies).references.isEmpty)
         #expect(try body("Inner", in: bodies).declaration.parentType == "Outer")
         #expect(try body("Inner", in: bodies).references.isEmpty)
-        #expect(try body("value", in: bodies).declaration.parentType == "Inner")
-        #expect(try body("execute", in: bodies).references.first?.receiverType == "Inner")
+        #expect(try body("value", in: bodies).declaration.parentType == "Outer.Inner")
+        #expect(try body("execute", in: bodies).references.first?.receiverType == "Outer.Inner")
     }
 
     @Test func straightforwardOperatorsAreCapturedAtTheirUsageSites() throws {
@@ -512,7 +512,7 @@ struct ReferenceGraphVisitorTests {
         let function = try body("execute", in: bodies)
         #expect(function.references.filter { $0.kind == .type }.map(\.name)
                 == ["Container", "Namespace", "Container", "Container"])
-        #expect(function.references.first { $0.name == "work" }?.receiverType == "Container")
+        #expect(function.references.first { $0.name == "work" }?.receiverType == "Namespace.Container")
         #expect(function.references.first { $0.name == "Container" && $0.kind == .type }?.receiverType == "Namespace")
         #expect(function.references.first { $0.name == "Container" && $0.kind == .type }?.isMember == true)
         #expect(!function.references.contains { $0.name == "self" })
@@ -809,6 +809,65 @@ struct ReferenceGraphVisitorTests {
         #expect(subscriptBody.defaultedParameterIndices == [0])
         #expect(try body("computed", in: bodies).references.map(\.name) == ["Value", "makeValue"])
         #expect(!bodies.contains { $0.declaration.name == "local" })
+    }
+
+    @Test func nestedAndQualifiedOwnersUseCanonicalPathsForReceivers() throws {
+        let bodies = collect("""
+        struct `Outer` {
+            struct `Inner`<T> {
+                func helper() {}
+                struct Leaf { func work() { self.helper() } }
+            }
+        }
+        extension `Outer`.`Inner`<Int> {
+            func execute(_ value: Outer.Inner<Int>) {
+                self.helper()
+                value.helper()
+                Outer.Inner<Int>.helper()
+            }
+        }
+        """)
+        let execute = try body("execute", in: bodies)
+        #expect(execute.declaration.parentType == "Outer.Inner")
+        #expect(execute.references.filter { $0.name == "helper" }.map(\.receiverType) == ["Outer.Inner", "Outer.Inner", "Outer.Inner"])
+        #expect(try body("work", in: bodies).declaration.parentType == "Outer.Inner.Leaf")
+        #expect(try body("work", in: bodies).references.first?.receiverType == "Outer.Inner.Leaf")
+    }
+
+    @Test func bindingOffsetsMatchCanonicalDeclarationIdentitiesWithoutChangingReportLines() throws {
+        let source = """
+        struct Outer { struct Inner {
+            var first: Int = 0,
+                second: String = ""
+        } }
+        """
+        let tree = Parser.parse(source: source)
+        let declarations = DeclarationVisitor(filePath: "test.swift", protocolRequirements: [:], sourceFile: tree)
+        declarations.walk(tree)
+        let bodies = collect(source)
+        for name in ["first", "second"] {
+            let declaration = try #require(declarations.declarations.first { $0.name == name })
+            let identity = try #require(declaration.identity)
+            let body = try body(name, in: bodies)
+            #expect(body.offset == identity.offset)
+            #expect(body.declaration.line == declaration.line)
+            #expect(body.declaration.parentType == declaration.parentType)
+        }
+        #expect(try body("first", in: bodies).offset != body("second", in: bodies).offset)
+    }
+
+    @Test func genericMemberTypeReceiversRemainUnknownRatherThanUsingTheirLeaf() throws {
+        let bodies = collect("""
+        struct Element {}
+        struct Container<T> {
+            var stored: T.Element
+            func execute(_ value: T.Element) { value.work(); self.stored.work() }
+        }
+        """)
+        let function = try body("execute", in: bodies)
+        let calls = function.references.filter { $0.name == "work" }
+        #expect(calls.count == 2)
+        #expect(calls.allSatisfy { $0.receiverType == nil && $0.isMember })
     }
 
     private func collect(_ source: String, knownTypes: Set<String> = []) -> [DeclarationBody] {

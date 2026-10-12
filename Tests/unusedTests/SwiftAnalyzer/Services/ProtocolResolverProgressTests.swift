@@ -41,9 +41,9 @@ struct ProtocolResolverProgressTests {
         #expect(capturedUpdates.map(\.estimatedRemaining) == [.milliseconds(25), .zero])
         #expect(capturedUpdates.map(\.elapsed) == [.milliseconds(25), .milliseconds(25)])
         #expect(finishLines.withLock { $0 } == 1)
-        #expect(Set(resolver.protocolRequirements.keys) == protocolNames)
+        #expect(resolver.protocolRequirements.isEmpty)
         for protocolName in protocolNames {
-            #expect(resolver.protocolRequirements[protocolName] == Set<String>())
+            #expect(resolver.resolutionStatuses[protocolName] == .unresolved)
         }
 
         let completion = try #require(capturedUpdates.last)

@@ -709,7 +709,7 @@ struct UsageVisitorTests {
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
 
-        #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Inner", memberName: "doSomething")))
+        #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Outer.Inner", memberName: "doSomething")))
         #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Outer", memberName: "outerMethod")))
     }
 

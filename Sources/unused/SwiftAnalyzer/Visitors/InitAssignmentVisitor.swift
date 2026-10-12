@@ -43,6 +43,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     private var parameterUsedForPropertyAssignment: [String: String] = [:]
     private var insideInit: Bool = false
     private var currentTypeName: String?
+    private var typeContextStack: [String?] = []
 
     init(
         propertyName: String,
@@ -50,8 +51,8 @@ final class InitAssignmentVisitor: SyntaxVisitor {
         sourceFile: SourceFileSyntax,
         fileName: String = "source.swift"
     ) {
-        self.propertyName = propertyName
-        self.typeName = typeName
+        self.propertyName = SwiftTypeName.normalized(propertyName)
+        self.typeName = typeName.map(SwiftTypeName.normalized)
         self.locationConverter = SourceLocationConverter(fileName: fileName, tree: sourceFile)
         super.init(viewMode: .sourceAccurate)
     }
@@ -82,62 +83,75 @@ final class InitAssignmentVisitor: SyntaxVisitor {
         return start...end
     }
 
-    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        let previousTypeName = currentTypeName
-        currentTypeName = node.name.text
-        defer { currentTypeName = previousTypeName }
+    private var insideTargetType: Bool {
+        typeName == nil || currentTypeName == typeName
+    }
 
-        if typeName == nil || currentTypeName == typeName {
-            return .visitChildren
-        }
-        return .skipChildren
+    private func pushTypeContext(name: String, isExtension: Bool = false) {
+        typeContextStack.append(currentTypeName)
+        currentTypeName = isExtension ? name : [currentTypeName, name].compactMap { $0 }.joined(separator: ".")
+    }
+
+    private func popTypeContext() {
+        currentTypeName = typeContextStack.popLast() ?? nil
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ClassDeclSyntax) {
+        popTypeContext()
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        let previousTypeName = currentTypeName
-        currentTypeName = node.name.text
-        defer { currentTypeName = previousTypeName }
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
 
-        if typeName == nil || currentTypeName == typeName {
-            return .visitChildren
-        }
-        return .skipChildren
+    override func visitPost(_ node: StructDeclSyntax) {
+        popTypeContext()
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        let previousTypeName = currentTypeName
-        currentTypeName = node.name.text
-        defer { currentTypeName = previousTypeName }
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
 
-        if typeName == nil || currentTypeName == typeName {
-            return .visitChildren
-        }
-        return .skipChildren
+    override func visitPost(_ node: EnumDeclSyntax) {
+        popTypeContext()
     }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        let previousTypeName = currentTypeName
-        currentTypeName = node.name.text
-        defer { currentTypeName = previousTypeName }
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
 
-        if typeName == nil || currentTypeName == typeName {
-            return .visitChildren
-        }
-        return .skipChildren
+    override func visitPost(_ node: ActorDeclSyntax) {
+        popTypeContext()
+    }
+
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        pushTypeContext(name: node.name.identifierName)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ProtocolDeclSyntax) {
+        popTypeContext()
     }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        let previousTypeName = currentTypeName
-        currentTypeName = extractTypeName(from: node.extendedType)
-        defer { currentTypeName = previousTypeName }
+        pushTypeContext(name: SwiftTypeName.canonical(node.extendedType), isExtension: true)
+        return .visitChildren
+    }
 
-        if typeName == nil || currentTypeName == typeName {
-            return .visitChildren
-        }
-        return .skipChildren
+    override func visitPost(_ node: ExtensionDeclSyntax) {
+        popTypeContext()
     }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard insideTargetType else { return .skipChildren }
         insideInit = true
         currentInitParameters = [:]
         currentInitParameterSources = [:]
@@ -153,9 +167,9 @@ final class InitAssignmentVisitor: SyntaxVisitor {
         for (index, parameter) in parameters.enumerated() {
             let paramName: String
             if let secondName = parameter.secondName {
-                paramName = secondName.text
+                paramName = secondName.identifierName
             } else {
-                paramName = parameter.firstName.text
+                paramName = parameter.firstName.identifierName
             }
 
             let lineRange = getLineRange(for: parameter)
@@ -202,6 +216,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     }
 
     override func visitPost(_ node: InitializerDeclSyntax) {
+        guard insideTargetType else { return }
         for (paramName, lineRange) in currentInitParameters {
             let usageCount = parameterUsageCounts[paramName] ?? 0
             let usedOnlyForProperty = parameterUsedForPropertyAssignment[paramName] == propertyName && usageCount == 1
@@ -234,7 +249,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
-        guard insideInit else {
+        guard insideInit && insideTargetType else {
             return .visitChildren
         }
 
@@ -277,7 +292,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
-        guard insideInit else {
+        guard insideInit && insideTargetType else {
             return .visitChildren
         }
 
@@ -302,12 +317,12 @@ final class InitAssignmentVisitor: SyntaxVisitor {
         for element in lhsElements {
             if let memberAccess = element.as(MemberAccessExprSyntax.self) {
                 if let base = memberAccess.base?.as(DeclReferenceExprSyntax.self),
-                   base.baseName.text == "self" {
-                    assignedProperty = memberAccess.declName.baseName.text
+                   base.baseName.identifierName == "self" {
+                    assignedProperty = memberAccess.declName.baseName.identifierName
                     break
                 }
             } else if let declRef = element.as(DeclReferenceExprSyntax.self) {
-                assignedProperty = declRef.baseName.text
+                assignedProperty = declRef.baseName.identifierName
             }
         }
 
@@ -349,11 +364,11 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-        guard insideInit else {
+        guard insideInit && insideTargetType else {
             return .visitChildren
         }
 
-        let name = node.baseName.text
+        let name = node.baseName.identifierName
         if currentInitParameters.keys.contains(name) {
             parameterUsageCounts[name, default: 0] += 1
         }
@@ -364,13 +379,13 @@ final class InitAssignmentVisitor: SyntaxVisitor {
     private func extractAssignedPropertyName(from expr: ExprSyntax) -> String? {
         if let memberAccess = expr.as(MemberAccessExprSyntax.self) {
             if let base = memberAccess.base?.as(DeclReferenceExprSyntax.self),
-               base.baseName.text == "self" {
-                return memberAccess.declName.baseName.text
+               base.baseName.identifierName == "self" {
+                return memberAccess.declName.baseName.identifierName
             }
         }
 
         if let declRef = expr.as(DeclReferenceExprSyntax.self) {
-            return declRef.baseName.text
+            return declRef.baseName.identifierName
         }
 
         return nil
@@ -378,7 +393,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
 
     private func extractSimpleIdentifier(from expr: ExprSyntax) -> String? {
         if let declRef = expr.as(DeclReferenceExprSyntax.self) {
-            return declRef.baseName.text
+            return declRef.baseName.identifierName
         }
         return nil
     }
@@ -395,12 +410,7 @@ final class InitAssignmentVisitor: SyntaxVisitor {
         }
     }
 
-    private func extractTypeName(from type: TypeSyntax) -> String {
-        if let identifierType = type.as(IdentifierTypeSyntax.self) {
-            return identifierType.name.text
-        }
-        return type.trimmedDescription
-    }
+
 }
 
 private final class ParameterUsageTracker: SyntaxVisitor {
@@ -413,7 +423,7 @@ private final class ParameterUsageTracker: SyntaxVisitor {
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-        let name = node.baseName.text
+        let name = node.baseName.identifierName
         if parameters.contains(name) {
             usedParameters.insert(name)
         }

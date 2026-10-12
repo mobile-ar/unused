@@ -219,9 +219,8 @@ struct ProtocolResolverTests {
 
         await resolver.resolveExternalProtocols()
 
-        // Unknown protocols get an empty set rather than nil
-        #expect(resolver.protocolRequirements["CompletelyFakeProtocolThatDoesNotExist"] != nil)
-        #expect(resolver.protocolRequirements["CompletelyFakeProtocolThatDoesNotExist"]?.isEmpty == true)
+        #expect(resolver.protocolRequirements["CompletelyFakeProtocolThatDoesNotExist"] == nil)
+        #expect(resolver.resolutionStatuses["CompletelyFakeProtocolThatDoesNotExist"] == .unresolved)
     }
 
     @Test

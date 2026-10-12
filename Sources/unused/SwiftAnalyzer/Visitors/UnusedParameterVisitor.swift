@@ -14,10 +14,20 @@ class UnusedParameterVisitor: SyntaxVisitor {
     private var typeContextStack: [(name: String?, protocols: Set<String>)] = []
     private var insideProtocol: Bool = false
     private let sourceLocationConverter: SourceLocationConverter
+    private let protectedCallables: Set<DeclarationIdentity>
+    private let usesGlobalWitnessResolution: Bool
+    private let moduleName: String?
 
-    init(filePath: String, protocolRequirements: [String: Set<String>], sourceFile: SourceFileSyntax) {
+    init(
+        filePath: String, protocolRequirements: [String: Set<String>], sourceFile: SourceFileSyntax,
+        protectedCallables: Set<DeclarationIdentity> = [], usesGlobalWitnessResolution: Bool = false,
+        moduleName: String? = nil
+    ) {
         self.filePath = filePath
         self.protocolRequirements = protocolRequirements
+        self.protectedCallables = protectedCallables
+        self.usesGlobalWitnessResolution = usesGlobalWitnessResolution
+        self.moduleName = moduleName.map(SwiftTypeName.normalized)
         self.sourceLocationConverter = SourceLocationConverter(fileName: filePath, tree: sourceFile)
         super.init(viewMode: .sourceAccurate)
     }
@@ -31,7 +41,7 @@ class UnusedParameterVisitor: SyntaxVisitor {
             return .skipChildren
         }
 
-        if shouldSkipFunction(modifiers: node.modifiers, attributes: node.attributes, name: node.name.identifierName) {
+        if isProtectedCallable(node) || shouldSkipFunction(modifiers: node.modifiers, attributes: node.attributes, name: node.name.identifierName) {
             return .skipChildren
         }
 
@@ -59,7 +69,8 @@ class UnusedParameterVisitor: SyntaxVisitor {
                     file: filePath,
                     line: location.line,
                     exclusionReason: .none,
-                    parentType: parentContext
+                    parentType: parentContext,
+                    identity: parameterIdentity(name: param.name, token: param.token)
                 ))
             }
         }
@@ -76,11 +87,11 @@ class UnusedParameterVisitor: SyntaxVisitor {
             return .skipChildren
         }
 
-        if isOverride(modifiers: node.modifiers) || hasSkippableAttribute(attributes: node.attributes) {
+        if isProtectedCallable(node) || isOverride(modifiers: node.modifiers) || hasSkippableAttribute(attributes: node.attributes) {
             return .skipChildren
         }
 
-        if currentTypeName != nil {
+        if !usesGlobalWitnessResolution, currentTypeName != nil {
             for protocolName in currentTypeProtocols {
                 if let requirements = protocolRequirements[protocolName], requirements.contains("init") {
                     return .skipChildren
@@ -112,7 +123,8 @@ class UnusedParameterVisitor: SyntaxVisitor {
                     file: filePath,
                     line: location.line,
                     exclusionReason: .none,
-                    parentType: parentContext
+                    parentType: parentContext,
+                    identity: parameterIdentity(name: param.name, token: param.token)
                 ))
             }
         }
@@ -175,6 +187,54 @@ class UnusedParameterVisitor: SyntaxVisitor {
         insideProtocol = false
     }
 
+    private func parameterIdentity(name: String, token: TokenSyntax) -> DeclarationIdentity {
+        let parameter = token.parent?.as(FunctionParameterSyntax.self)
+        let signature = MemberSignature(
+            kind: .parameter,
+            name: SwiftTypeName.normalized(name),
+            resultType: parameter.map { MemberSignature.typeSpelling($0.type) }
+        )
+        var scopes: [Int] = []
+        var ownerPaths: [[String]] = []
+        var ancestor = token.parent
+        while let syntax = ancestor {
+            if syntax.is(FunctionDeclSyntax.self) || syntax.is(InitializerDeclSyntax.self)
+                || syntax.is(SubscriptDeclSyntax.self) || syntax.is(ClosureExprSyntax.self)
+                || syntax.is(CodeBlockSyntax.self) || syntax.is(SwitchCaseSyntax.self)
+                || syntax.is(AccessorBlockSyntax.self) {
+                scopes.append(syntax.positionAfterSkippingLeadingTrivia.utf8Offset)
+            }
+            if let declaration = syntax.as(ClassDeclSyntax.self) {
+                ownerPaths.append([declaration.name.identifierName])
+            } else if let declaration = syntax.as(StructDeclSyntax.self) {
+                ownerPaths.append([declaration.name.identifierName])
+            } else if let declaration = syntax.as(EnumDeclSyntax.self) {
+                ownerPaths.append([declaration.name.identifierName])
+            } else if let declaration = syntax.as(ActorDeclSyntax.self) {
+                ownerPaths.append([declaration.name.identifierName])
+            } else if let declaration = syntax.as(ProtocolDeclSyntax.self) {
+                ownerPaths.append([declaration.name.identifierName])
+            } else if let declaration = syntax.as(ExtensionDeclSyntax.self) {
+                ownerPaths.append(SwiftTypeName.canonical(declaration.extendedType).split(separator: ".").map(String.init))
+            }
+            ancestor = syntax.parent
+        }
+        return DeclarationIdentity(
+            file: filePath,
+            offset: token.positionAfterSkippingLeadingTrivia.utf8Offset,
+            signature: signature,
+            moduleName: moduleName,
+            enclosingTypePath: ownerPaths.reversed().flatMap { $0 },
+            lexicalScope: Array(scopes.reversed()),
+            isTypeMember: false
+        )
+    }
+
+    private func isProtectedCallable(_ node: some SyntaxProtocol) -> Bool {
+        let offset = node.positionAfterSkippingLeadingTrivia.utf8Offset
+        return protectedCallables.contains { $0.file == filePath && $0.offset == offset }
+    }
+
     private func shouldSkipFunction(modifiers: DeclModifierListSyntax, attributes: AttributeListSyntax, name: String) -> Bool {
         if isOverride(modifiers: modifiers) {
             return true
@@ -184,7 +244,7 @@ class UnusedParameterVisitor: SyntaxVisitor {
             return true
         }
 
-        if currentTypeName != nil {
+        if !usesGlobalWitnessResolution, currentTypeName != nil {
             for protocolName in currentTypeProtocols {
                 if let requirements = protocolRequirements[protocolName], requirements.contains(name) {
                     return true
@@ -219,10 +279,10 @@ class UnusedParameterVisitor: SyntaxVisitor {
             let token: TokenSyntax
 
             if let secondName = parameter.secondName {
-                name = secondName.text
+                name = secondName.identifierName
                 token = secondName
             } else {
-                name = parameter.firstName.text
+                name = parameter.firstName.identifierName
                 token = parameter.firstName
             }
 
@@ -260,23 +320,11 @@ class UnusedParameterVisitor: SyntaxVisitor {
     }
 
     private func extractTypeName(from type: TypeSyntax) -> String {
-        if let identifierType = type.as(IdentifierTypeSyntax.self) {
-            return identifierType.name.text
-        }
-        return type.trimmedDescription
+        SwiftTypeName.canonical(type)
     }
 
     private func extractProtocols(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
-        var protocols = Set<String>()
-        guard let clause = inheritanceClause else { return protocols }
-
-        for inherited in clause.inheritedTypes {
-            if let typeName = inherited.type.as(IdentifierTypeSyntax.self)?.name.text {
-                protocols.insert(typeName)
-            }
-        }
-
-        return protocols
+        SwiftTypeName.inheritedNames(inheritanceClause)
     }
 }
 
@@ -290,12 +338,12 @@ private class BodyIdentifierCollector: SyntaxVisitor {
     var identifiers = Set<String>()
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-        identifiers.insert(node.baseName.text)
+        identifiers.insert(node.baseName.identifierName)
         return .visitChildren
     }
 
     override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-        identifiers.insert(node.identifier.text)
+        identifiers.insert(node.identifier.identifierName)
         return .visitChildren
     }
 }

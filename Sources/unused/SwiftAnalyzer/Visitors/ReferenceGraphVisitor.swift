@@ -22,7 +22,7 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
     init(filePath: String, sourceFile: SourceFileSyntax, knownTypeNames: Set<String> = []) {
         self.filePath = filePath
         self.sourceLocationConverter = SourceLocationConverter(fileName: filePath, tree: sourceFile)
-        self.knownTypeNames = knownTypeNames
+        self.knownTypeNames = Set(knownTypeNames.map(SwiftTypeName.normalized))
         super.init(viewMode: .sourceAccurate)
         indexTypeNames(in: Syntax(sourceFile))
         indexNames(in: Syntax(sourceFile), parentType: nil, isLocal: false)
@@ -97,7 +97,7 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         // Extensions supply context, not a second declaration of their extended type.
-        typeNames.append(typeName(node.extendedType) ?? node.extendedType.trimmedDescription)
+        typeNames.append(SwiftTypeName.canonical(node.extendedType))
         scopes.append([:])
         genericScopes.append(typeGenericNames[typeNames.last ?? ""] ?? [])
         let enclosingOwners = owners
@@ -152,8 +152,9 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
                 }
             } else {
                 for name in names {
-                    // DeclarationVisitor reports every binding at the variable declaration's start.
-                    beginDeclaration(node, name: name, kind: "variable")
+                    // Preserve report line/column while identifying each binding by its own offset.
+                    beginDeclaration(node, name: name, kind: "variable",
+                                     offset: binding.positionAfterSkippingLeadingTrivia.utf8Offset)
                     walk(node.attributes)
                     if binding.typeAnnotation == nil, binding.initializer == nil,
                        let annotation = sharedAnnotation(for: binding, in: node) {
@@ -349,9 +350,9 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
         if name == "Self", let currentType = typeNames.last {
-            record(currentType, kind: .type, at: node.name)
+            recordType(currentType, at: node.name)
         } else if !genericScopes.contains(where: { $0.contains(name) }) {
-            record(name, kind: .type, at: node.name)
+            recordType(resolvedTypeName(name), at: node.name)
         }
         return .visitChildren
     }
@@ -425,8 +426,12 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
         let kind: ReferenceKind = isWrite(node) ? .write
             : knownTypeNames.contains(name) && valueType(name) == nil ? .type
             : node.argumentNames != nil || functionNames.contains(name) ? .reference : .read
-        record(name, kind: kind, at: node.baseName,
-               labels: node.argumentNames.map { $0.arguments.map { $0.name.identifierName } })
+        if kind == .type {
+            recordType(resolvedTypeName(name), at: node.baseName)
+        } else {
+            record(name, kind: kind, at: node.baseName,
+                   labels: node.argumentNames.map { $0.arguments.map { $0.name.identifierName } })
+        }
         return .skipChildren
     }
 
@@ -476,9 +481,10 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
     private func collectType(_ node: some SyntaxProtocol, name: String, kind: String,
                              generics: GenericParameterClauseSyntax?) {
         beginDeclaration(node, name: name, kind: kind)
-        typeNames.append(name)
+        let fullName = [typeNames.last, name].compactMap { $0 }.joined(separator: ".")
+        typeNames.append(fullName)
         scopes.append([:])
-        genericScopes.append(typeGenericNames[name] ?? Set(generics?.parameters.map { $0.name.identifierName } ?? []))
+        genericScopes.append(typeGenericNames[fullName] ?? Set(generics?.parameters.map { $0.name.identifierName } ?? []))
         walkChildren(of: node)
         genericScopes.removeLast()
         scopes.removeLast()
@@ -488,7 +494,7 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
 
     private func beginDeclaration(_ node: some SyntaxProtocol, name: String, kind: String,
                                   signature: String? = nil, labels: [String]? = nil,
-                                  defaultedIndices: Set<Int> = [], variadicIndex: Int? = nil) {
+                                  defaultedIndices: Set<Int> = [], variadicIndex: Int? = nil, offset: Int? = nil) {
         let location = node.startLocation(converter: sourceLocationConverter)
         let declaration = DeclarationReference(name: name, parentType: typeNames.last, file: filePath,
                                                line: location.line, column: location.column,
@@ -496,11 +502,11 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
         owners.append(declarationBodies.count)
         declarationBodies.append(DeclarationBody(declaration: declaration, references: [],
                                                  lexicalScope: lexicalOffsets, parameterLabels: labels,
-                                                 offset: node.positionAfterSkippingLeadingTrivia.utf8Offset,
+                                                 offset: offset ?? node.positionAfterSkippingLeadingTrivia.utf8Offset,
                                                  defaultedParameterIndices: defaultedIndices,
                                                  variadicParameterIndex: variadicIndex))
         referenceBuffers.append([])
-        lexicalOffsets.append(node.positionAfterSkippingLeadingTrivia.utf8Offset)
+        lexicalOffsets.append(offset ?? node.positionAfterSkippingLeadingTrivia.utf8Offset)
     }
 
     private func endDeclaration() {
@@ -518,6 +524,13 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
                                                    defaultedParameterIndices: body.defaultedParameterIndices,
                                                    variadicParameterIndex: body.variadicParameterIndex)
         referenceBuffers[owner] = []
+    }
+
+    private func recordType(_ name: String, at node: some SyntaxProtocol) {
+        let components = name.split(separator: ".")
+        let owner = components.dropLast().joined(separator: ".")
+        record(String(components.last ?? ""), kind: .type, at: node,
+               receiver: owner.isEmpty ? nil : owner, isMember: !owner.isEmpty)
     }
 
     private func record(_ name: String, kind: ReferenceKind, at node: some SyntaxProtocol,
@@ -585,7 +598,7 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
             if let type = valueType(name) {
                 return type.isEmpty ? nil : type
             }
-            return knownTypeNames.contains(name) ? name : nil
+            return knownTypeNames.contains(name) ? resolvedTypeName(name) : nil
         }
         if let optional = expression.as(OptionalChainingExprSyntax.self) {
             return receiverType(optional.expression)
@@ -611,8 +624,9 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
             if let property = typeProperties[type]?[name] {
                 return property.isEmpty ? nil : property
             }
-            if isTypeExpression(base), knownTypeNames.contains(name) {
-                return name
+            let nestedType = type + "." + name
+            if isTypeExpression(base), knownTypeNames.contains(nestedType) {
+                return nestedType
             }
         }
         if let tuple = expression.as(TupleExprSyntax.self), tuple.elements.count == 1,
@@ -647,8 +661,9 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
         if let specialization = expression.as(GenericSpecializationExprSyntax.self) {
             return isTypeExpression(specialization.expression)
         }
-        if let member = expression.as(MemberAccessExprSyntax.self), let base = member.base {
-            return isTypeExpression(base) && knownTypeNames.contains(member.declName.baseName.identifierName)
+        if let member = expression.as(MemberAccessExprSyntax.self), let base = member.base,
+           let baseType = receiverType(base) {
+            return isTypeExpression(base) && knownTypeNames.contains(baseType + "." + member.declName.baseName.identifierName)
         }
         return false
     }
@@ -665,10 +680,11 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
             if name == "Optional", let argument = identifier.genericArgumentClause?.arguments.first {
                 return argument.argument.as(TypeSyntax.self).flatMap(typeName)
             }
-            return name
+            return resolvedTypeName(name)
         }
         if let member = type.as(MemberTypeSyntax.self) {
-            return member.name.identifierName
+            guard let base = typeName(member.baseType) else { return nil }
+            return base + "." + member.name.identifierName
         }
         if let optional = type.as(OptionalTypeSyntax.self) {
             return typeName(optional.wrappedType)
@@ -683,6 +699,18 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
             return typeName(metatype.baseType)
         }
         return nil
+    }
+
+    private func resolvedTypeName(_ name: String) -> String {
+        var path = typeNames.last?.split(separator: ".").map(String.init) ?? []
+        while !path.isEmpty {
+            let candidate = (path + [name]).joined(separator: ".")
+            if knownTypeNames.contains(candidate) {
+                return candidate
+            }
+            path.removeLast()
+        }
+        return name
     }
 
     private func bind(_ name: String, type: String?) {
@@ -810,24 +838,27 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
         }
     }
 
-    private func indexTypeNames(in node: Syntax) {
+    private func indexTypeNames(in node: Syntax, parentType: String? = nil) {
         let name = node.as(ClassDeclSyntax.self)?.name.identifierName
             ?? node.as(StructDeclSyntax.self)?.name.identifierName
             ?? node.as(EnumDeclSyntax.self)?.name.identifierName
             ?? node.as(ActorDeclSyntax.self)?.name.identifierName
             ?? node.as(ProtocolDeclSyntax.self)?.name.identifierName
             ?? node.as(TypeAliasDeclSyntax.self)?.name.identifierName
-        if let name {
-            knownTypeNames.insert(name)
+        let fullName = name.map { [parentType, $0].compactMap { $0 }.joined(separator: ".") }
+        if let name, let fullName {
+            knownTypeNames.formUnion([name, fullName])
             let parameters = node.children(viewMode: .sourceAccurate)
                 .compactMap { $0.as(GenericParameterClauseSyntax.self) }
                 .flatMap { $0.parameters.map { $0.name.identifierName } }
             let associatedTypes = node.as(ProtocolDeclSyntax.self)?.memberBlock.members
                 .compactMap { $0.decl.as(AssociatedTypeDeclSyntax.self)?.name.identifierName } ?? []
-            typeGenericNames[name] = Set(parameters + associatedTypes)
+            typeGenericNames[fullName] = Set(parameters + associatedTypes)
         }
+        let context = node.as(ExtensionDeclSyntax.self).map { SwiftTypeName.canonical($0.extendedType) }
+            ?? (node.is(TypeAliasDeclSyntax.self) ? parentType : fullName ?? parentType)
         for child in node.children(viewMode: .sourceAccurate) {
-            indexTypeNames(in: child)
+            indexTypeNames(in: child, parentType: context)
         }
     }
 
@@ -837,7 +868,8 @@ final class ReferenceGraphVisitor: SyntaxVisitor {
             ?? node.as(EnumDeclSyntax.self)?.name.identifierName
             ?? node.as(ActorDeclSyntax.self)?.name.identifierName
             ?? node.as(ProtocolDeclSyntax.self)?.name.identifierName
-        let context = type ?? node.as(ExtensionDeclSyntax.self).flatMap { typeName($0.extendedType) } ?? parentType
+        let context = type.map { [parentType, $0].compactMap { $0 }.joined(separator: ".") }
+            ?? node.as(ExtensionDeclSyntax.self).map { SwiftTypeName.canonical($0.extendedType) } ?? parentType
         if let function = node.as(FunctionDeclSyntax.self) {
             functionNames.insert(function.name.identifierName)
             if !isLocal, let context {

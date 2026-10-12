@@ -15,7 +15,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("State"))
@@ -38,7 +38,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("State"))
@@ -56,7 +56,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("StateObject"))
@@ -79,7 +79,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("ActualWrapper"))
@@ -98,7 +98,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("OptionalWrapper"))
@@ -113,7 +113,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("InternalWrapper"))
@@ -132,7 +132,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.isEmpty)
@@ -165,7 +165,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("State"))
@@ -187,7 +187,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let wrappers = parser.parsePropertyWrappers(from: moduleInterface)
 
         #expect(wrappers.contains("FrozenWrapper"))
@@ -259,7 +259,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "ChildProtocol", from: moduleInterface)
 
         #expect(parents != nil)
@@ -283,7 +283,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "Combined", from: moduleInterface)
 
         #expect(parents != nil)
@@ -300,7 +300,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "StandaloneProtocol", from: moduleInterface)
 
         #expect(parents != nil)
@@ -315,7 +315,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "AsyncParsableCommand", from: moduleInterface)
 
         #expect(parents != nil)
@@ -331,7 +331,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "NonExistentProtocol", from: moduleInterface)
 
         #expect(parents == nil)
@@ -346,7 +346,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "AsyncCommand", from: moduleInterface)
 
         #expect(parents != nil)
@@ -361,7 +361,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "TypedProtocol", from: moduleInterface)
 
         #expect(parents != nil)
@@ -394,7 +394,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let parents = parser.parseProtocolParents(protocolName: "MyProtocol", from: moduleInterface)
 
         #expect(parents != nil)
@@ -415,7 +415,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("URL"))
@@ -434,7 +434,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("NSObject"))
@@ -451,7 +451,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("ComparisonResult"))
@@ -472,7 +472,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("Codable"))
@@ -487,7 +487,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("MyActor"))
@@ -500,7 +500,7 @@ struct SwiftInterfaceParserTests {
         public func abs<T>(_ x: T) -> T where T : Comparable
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("print"))
@@ -514,7 +514,7 @@ struct SwiftInterfaceParserTests {
         public var stderr: UnsafeMutablePointer<FILE>
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("pi"))
@@ -528,7 +528,7 @@ struct SwiftInterfaceParserTests {
         public typealias IntegerLiteralType = Int
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("StringLiteralType"))
@@ -546,7 +546,7 @@ struct SwiftInterfaceParserTests {
         }
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("RealType"))
@@ -560,7 +560,7 @@ struct SwiftInterfaceParserTests {
         // Only comments here
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.isEmpty)
@@ -597,7 +597,7 @@ struct SwiftInterfaceParserTests {
         public func withAnimation<Result>(_ animation: Animation?, _ body: () throws -> Result) rethrows -> Result
         """
 
-        let parser = SwiftInterfaceParser()!
+        let parser = SwiftInterfaceParser(sdkPath: nil)
         let symbols = parser.parseExportedSymbols(from: moduleInterface)
 
         #expect(symbols.contains("State"))

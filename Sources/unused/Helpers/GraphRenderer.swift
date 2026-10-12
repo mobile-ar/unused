@@ -240,6 +240,8 @@ struct GraphRenderer {
             "Exclusion: CaseIterable; synthesized references may be indirect."
         case .mainAttribute:
             "Exclusion: @main; the runtime supplies the entry point."
+        case .unresolvedProtocol:
+            "Exclusion: protocol requirements unavailable; this may be a required witness."
         }
     }
 

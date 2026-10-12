@@ -1,4 +1,5 @@
 import Foundation
+import SwiftParser
 import Testing
 @testable import unused
 
@@ -18,6 +19,134 @@ struct ReferenceGraphServiceTests {
         let target = ReportItem(id: 1, name: name, type: type, file: directory.appendingPathComponent(file).path,
                                 line: line, exclusionReason: .none, parentType: parentType)
         return await ReferenceGraphService().buildGraph(for: target, in: directory.path, includeTests: includeTests)
+    }
+
+    private func graphFromDeclaration(
+        _ source: String, currentSource: String? = nil, select: (Declaration) -> Bool
+    ) async throws -> ReferenceGraphResult {
+        let directory = FileManager.default.temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        let file = directory.appendingPathComponent("CanonicalGraph.swift")
+        let sourceFile = Parser.parse(source: source)
+        let declarations = DeclarationVisitor(filePath: file.path, protocolRequirements: [:], sourceFile: sourceFile)
+        declarations.walk(sourceFile)
+        let selected = declarations.declarations.first(where: select)
+        let declaration = try #require(selected)
+        let report = ReportItem(id: 1, declaration: declaration)
+        let service = ReferenceGraphService(
+            discoverFiles: { _, _ in SwiftFileDiscoveryResult(files: [file], excludedTestFileCount: 0) },
+            readSource: { _ in currentSource ?? source }
+        )
+        return await service.buildGraph(for: report, in: directory.path)
+    }
+
+    @Test func canonicalNestedDeclarationReportsFindTheirGraphRootsAndReferences() async throws {
+        let result = try await graphFromDeclaration("""
+        struct Outer {
+            struct Inner {
+                func target() { helper() }
+                func helper() {}
+                func caller() { self.target() }
+            }
+        }
+        """, select: { $0.name == "target" })
+        #expect(result.targetFound)
+        #expect(result.root?.parentType == "Outer.Inner")
+        #expect(result.inbound.map(\.displayName) == ["Outer.Inner.caller()"])
+        #expect(result.outbound.map(\.displayName) == ["Outer.Inner.helper()"])
+    }
+
+    @Test func canonicalNestedTypeReportsFindTheirOwnGraphRoots() async throws {
+        let result = try await graphFromDeclaration("""
+        struct Outer { struct Inner {} }
+        struct Other { struct Inner {} }
+        """, select: { $0.name == "Inner" && $0.parentType == "Outer" })
+        #expect(result.targetFound)
+        #expect(result.root?.name == "Inner")
+        #expect(result.root?.parentType == "Outer")
+        #expect(result.root?.kind == "struct")
+    }
+
+    @Test func canonicalQualifiedExtensionReportsMatchTheirSourceOwner() async throws {
+        let result = try await graphFromDeclaration("""
+        struct `Outer` { struct `Inner`<T> { func helper() {} } }
+        extension `Outer`.`Inner`<Int> {
+            func target() { self.helper() }
+        }
+        """, select: { $0.name == "target" })
+        #expect(result.targetFound)
+        #expect(result.root?.parentType == "Outer.Inner")
+        #expect(result.outbound.map(\.name) == ["helper"])
+        #expect(result.edges.filter { $0.source == result.root }.allSatisfy { !$0.isAmbiguous })
+    }
+
+    @Test func nestedReceiverPathsWorkAcrossFilesWithoutMatchingEqualLeafOwners() async throws {
+        let result = try await graph([
+            "Main.swift": "struct Outer { struct Inner { static func target() {} } }\nstruct Other { struct Inner { static func target() {} } }",
+            "Caller.swift": "func caller(_ value: Outer.Inner) { value.target(); Outer.Inner.target(); Other.Inner.target() }"
+        ], parentType: "Outer.Inner")
+        #expect(result.targetFound)
+        let incoming = result.edges.filter { $0.target == result.root }
+        #expect(incoming.count == 2)
+        #expect(incoming.allSatisfy { $0.usage.receiverType == "Outer.Inner" && !$0.isAmbiguous })
+    }
+
+    @Test func nestedConstructorReportsIncludeDirectAndExtensionInitializers() async throws {
+        let direct = try await graphFromDeclaration("""
+        struct Outer { struct Inner { init() {} } }
+        func caller() { _ = Outer.Inner() }
+        """, select: { $0.name == "init" })
+        #expect(direct.targetFound)
+        #expect(direct.root?.parentType == "Outer.Inner")
+        #expect(direct.inbound.map(\.name) == ["caller"])
+        let extended = try await graphFromDeclaration("""
+        struct Outer { struct Inner {} }
+        extension Outer.Inner { init() {} }
+        func caller() { _ = Outer.Inner() }
+        """, select: { $0.name == "init" })
+        #expect(extended.targetFound)
+        #expect(extended.inbound.map(\.name) == ["caller"])
+    }
+
+    @Test func canonicalIdentityDisambiguatesSameNameOverloadsOnTheSameLine() async throws {
+        let result = try await graphFromDeclaration("""
+        func target(_ value: Int) { integerDependency() }; func target(_ value: String) { stringDependency() }
+        func integerDependency() {}
+        func stringDependency() {}
+        """, select: { $0.name == "target" && $0.identity?.signature.parameterTypes == ["String"] })
+        #expect(result.targetFound)
+        #expect(result.root?.line == 1)
+        #expect((result.root?.column ?? 0) > 1)
+        #expect(result.outbound.map(\.name) == ["stringDependency"])
+        #expect(!result.warnings.contains { $0.contains("cannot distinguish") })
+    }
+
+    @Test func staleIdentityOffsetsDoNotFallBackToSameNameReportLocations() async throws {
+        let result = try await graphFromDeclaration(
+            "func target() {}", currentSource: " func target() {}", select: { $0.name == "target" }
+        )
+        #expect(!result.targetFound)
+        #expect(result.warnings.contains { $0.contains("refresh the IDs") })
+    }
+
+    @Test func changedSignaturesAtTheSameOffsetDoNotSelectReorderedOverloads() async throws {
+        let result = try await graphFromDeclaration(
+            "func target(_ value: Int) {}; func target(_ value: String) {}",
+            currentSource: "func target(_ value: String) {}; func target(_ value: Int) {}",
+            select: { $0.name == "target" && $0.identity?.signature.parameterTypes == ["Int"] }
+        )
+        #expect(!result.targetFound)
+        #expect(result.warnings.contains { $0.contains("refresh the IDs") })
+    }
+
+    @Test func canonicalMultiBindingReportsUseBindingOffsetsAndOriginalReportLines() async throws {
+        let result = try await graphFromDeclaration("""
+        let first = 1,
+            target = helper()
+        func helper() -> Int { 0 }
+        """, select: { $0.name == "target" })
+        #expect(result.targetFound)
+        #expect(result.root?.line == 1)
+        #expect(result.outbound.map(\.name) == ["helper"])
     }
 
     @Test func findsBothDirectionsAndActualUsageSites() async throws {

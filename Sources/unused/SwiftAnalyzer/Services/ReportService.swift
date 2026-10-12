@@ -40,6 +40,9 @@ struct ReportService {
     }
 
     static func display(report: Report) {
+        for warning in report.warnings {
+            print("Warning: \(warning)".yellow)
+        }
         let unusedItems = report.unused
         let excludedOverrideItems = report.excluded.overrides
         let excludedProtocolItems = report.excluded.protocolImplementations
@@ -145,8 +148,13 @@ struct ReportService {
             if !excludedOverrideItems.isEmpty {
                 print("  - ".overlay0 + "\(excludedOverrideItems.count)".yellow + " override(s)".subtext0)
             }
-            if !excludedProtocolItems.isEmpty {
-                print("  - ".overlay0 + "\(excludedProtocolItems.count)".yellow + " protocol implementation(s)".subtext0)
+            let confirmedProtocols = excludedProtocolItems.filter { $0.exclusionReason == .protocolImplementation }
+            let uncertainProtocols = excludedProtocolItems.filter { $0.exclusionReason == .unresolvedProtocol }
+            if !confirmedProtocols.isEmpty {
+                print("  - ".overlay0 + "\(confirmedProtocols.count)".yellow + " protocol implementation(s)".subtext0)
+            }
+            if !uncertainProtocols.isEmpty {
+                print("  - ".overlay0 + "\(uncertainProtocols.count)".yellow + " potential protocol witness(es) retained; requirements unavailable".subtext0)
             }
             if !excludedObjcItems.isEmpty {
                 print("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
@@ -168,10 +176,10 @@ struct ReportService {
                 }
 
                 if !excludedProtocolItems.isEmpty {
-                    print("\n  Protocol Implementations:".mauve)
+                    print("\n  Protocol Implementations / Unresolved Witnesses:".mauve)
                     for item in excludedProtocolItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
-                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [\(item.exclusionReason.description)]".overlay0)
                     }
                 }
 
@@ -196,7 +204,7 @@ struct ReportService {
             if !options.includeOverrides && !excludedOverrideItems.isEmpty {
                 flags.append("--include-overrides")
             }
-            if !options.includeProtocols && !excludedProtocolItems.isEmpty {
+            if !options.includeProtocols && excludedProtocolItems.contains(where: { $0.exclusionReason == .protocolImplementation }) {
                 flags.append("--include-protocols")
             }
             if !options.includeObjc && !excludedObjcItems.isEmpty {

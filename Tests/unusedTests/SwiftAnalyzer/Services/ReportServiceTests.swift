@@ -465,7 +465,7 @@ struct ReportServiceTests {
         )
 
         #expect(report.version == Report.currentVersion)
-        #expect(report.version == "1.0")
+        #expect(report.version == "2.0")
     }
 
     @Test func testSpecialCharactersInNames() async throws {

@@ -16,6 +16,7 @@ enum DeclarationType: String, Codable {
 enum ExclusionReason: String, Codable {
     case override
     case protocolImplementation
+    case unresolvedProtocol
     case objcAttribute
     case ibAction
     case ibOutlet
@@ -28,6 +29,7 @@ enum ExclusionReason: String, Codable {
         switch self {
         case .override: return "override"
         case .protocolImplementation: return "protocol"
+        case .unresolvedProtocol: return "unresolved protocol"
         case .objcAttribute: return "@objc"
         case .ibAction: return "@IBAction"
         case .ibOutlet: return "@IBOutlet"
@@ -48,6 +50,7 @@ struct Declaration: Sendable {
     let line: Int
     let exclusionReason: ExclusionReason
     let parentType: String? // For tracking which class/struct the declaration belongs to
+    var identity: DeclarationIdentity? = nil
 
     var shouldExcludeByDefault: Bool {
         return exclusionReason != .none

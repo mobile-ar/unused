@@ -9,4 +9,8 @@ struct ProtocolVisitorResult: Sendable {
     let importedModules: Set<String>
     let conformedProtocols: Set<String>
     let protocolExtensionUsedMembers: [String: Set<String>]
+    var protocolDefinitions: [String: ProtocolDefinition] = [:]
+    var typeInheritance: [String: Set<String>] = [:]
+    var typeKinds: [String: String] = [:]
+    var typeAliases: [String: Set<String>] = [:]
 }

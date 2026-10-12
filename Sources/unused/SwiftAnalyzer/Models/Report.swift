@@ -13,6 +13,7 @@ struct ReportItem: Codable, Equatable, Hashable {
     let line: Int
     let exclusionReason: ExclusionReason
     let parentType: String?
+    var identity: DeclarationIdentity? = nil
 
     var declaration: Declaration {
         Declaration(
@@ -21,7 +22,8 @@ struct ReportItem: Codable, Equatable, Hashable {
             file: file,
             line: line,
             exclusionReason: exclusionReason,
-            parentType: parentType
+            parentType: parentType,
+            identity: identity
         )
     }
 }
@@ -35,6 +37,7 @@ extension ReportItem {
         self.line = declaration.line
         self.exclusionReason = declaration.exclusionReason
         self.parentType = declaration.parentType
+        self.identity = declaration.identity
     }
 }
 
@@ -104,16 +107,18 @@ struct Report: Codable, Equatable {
 
     /// Items excluded from results based on options
     let excluded: ExcludedItems
+    var warnings: [String] = []
 
     /// Current schema version
-    static let currentVersion = "1.0"
+    static let currentVersion = "2.0"
 
-    init(unused: [ReportItem], excluded: ExcludedItems, options: ReportOptions, testFilesExcluded: Int) {
+    init(unused: [ReportItem], excluded: ExcludedItems, options: ReportOptions, testFilesExcluded: Int, warnings: [String] = []) {
         self.version = Self.currentVersion
         self.generatedAt = Date()
         self.options = options
         self.unused = unused
         self.excluded = excluded
+        self.warnings = warnings
         self.summary = ReportSummary(totalExcluded: excluded.totalCount, testFilesExcluded: testFilesExcluded)
     }
 

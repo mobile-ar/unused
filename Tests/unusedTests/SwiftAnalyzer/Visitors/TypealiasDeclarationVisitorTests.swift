@@ -299,6 +299,7 @@ struct TypealiasDeclarationVisitorTests {
         let typealiases = visitor.declarations.filter { $0.type == .typealias }
         #expect(typealiases.count == 1)
         #expect(typealiases[0].name == "ID")
-        #expect(typealiases[0].parentType == "Inner")
+        #expect(typealiases[0].parentType == "Outer.Inner")
+        #expect(typealiases[0].identity?.enclosingTypePath == ["Outer", "Inner"])
     }
 }
