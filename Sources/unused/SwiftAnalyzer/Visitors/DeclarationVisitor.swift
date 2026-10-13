@@ -54,20 +54,11 @@ class DeclarationVisitor: SyntaxVisitor {
             exclusionReason = .override
         }
 
-        // Check for @objc, @IBAction attributes
         if exclusionReason == .none {
-            for attribute in node.attributes {
-                if case .attribute(let attr) = attribute {
-                    let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
-                    switch attrName {
-                    case "objc":
-                        exclusionReason = .objcAttribute
-                    case "IBAction":
-                        exclusionReason = .ibAction
-                    default:
-                        break
-                    }
-                }
+            if hasAttribute(named: "IBAction", in: node.attributes) {
+                exclusionReason = .ibAction
+            } else if hasRuntimeExposure(attributes: node.attributes, modifiers: node.modifiers) {
+                exclusionReason = .objcAttribute
             }
         }
 
@@ -99,7 +90,8 @@ class DeclarationVisitor: SyntaxVisitor {
             if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
                 let name = identifier.identifier.identifierName
                 let signature = MemberSignature(variable: node, binding: binding)
-                var exclusionReason: ExclusionReason = .none
+                var exclusionReason: ExclusionReason = node.modifiers.contains { $0.name.text == "override" }
+                    ? .override : .none
                 var attributes: Set<String> = []
 
                 // Collect all attributes
@@ -109,10 +101,14 @@ class DeclarationVisitor: SyntaxVisitor {
                         if !attrName.isEmpty {
                             attributes.insert(attrName)
                         }
-                        if attrName == "IBOutlet" {
+                        if attrName == "IBOutlet", exclusionReason == .none {
                             exclusionReason = .ibOutlet
                         }
                     }
+                }
+
+                if exclusionReason == .none && hasRuntimeExposure(attributes: node.attributes, modifiers: node.modifiers) {
+                    exclusionReason = .objcAttribute
                 }
 
                 if exclusionReason == .none && implementsProtocolRequirement(signature) {
@@ -162,6 +158,10 @@ class DeclarationVisitor: SyntaxVisitor {
             exclusionReason = .override
         }
 
+        if exclusionReason == .none && hasRuntimeExposure(attributes: node.attributes, modifiers: node.modifiers) {
+            exclusionReason = .objcAttribute
+        }
+
         if exclusionReason == .none && implementsProtocolRequirement(signature) {
             exclusionReason = .protocolImplementation
         }
@@ -195,14 +195,8 @@ class DeclarationVisitor: SyntaxVisitor {
             exclusionReason = .override
         }
 
-        // Check for @objc attribute
-        for attribute in node.attributes {
-            if case .attribute(let attr) = attribute {
-                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
-                if attrName == "objc" {
-                    exclusionReason = .objcAttribute
-                }
-            }
+        if exclusionReason == .none && hasRuntimeExposure(attributes: node.attributes, modifiers: node.modifiers) {
+            exclusionReason = .objcAttribute
         }
 
         if exclusionReason == .none && implementsProtocolRequirement(signature) {
@@ -233,7 +227,9 @@ class DeclarationVisitor: SyntaxVisitor {
             projectPropertyWrappers.insert(name)
         }
 
-        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute
+            : hasAttribute(named: "objc", in: node.attributes) || hasAttribute(named: "objcMembers", in: node.attributes)
+                ? .objcAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -287,13 +283,14 @@ class DeclarationVisitor: SyntaxVisitor {
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.name.identifierName
         let isMain = hasAttribute(named: "main", in: node.attributes)
+        let isObjc = hasAttribute(named: "objc", in: node.attributes)
 
         // Check if this enum is a property wrapper
         if hasAttribute(named: "propertyWrapper", in: node.attributes) {
             projectPropertyWrappers.insert(name)
         }
 
-        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : .none
+        let exclusionReason: ExclusionReason = isMain ? .mainAttribute : isObjc ? .objcAttribute : .none
         let location = node.startLocation(converter: sourceLocationConverter)
         let lineNumber = location.line
 
@@ -369,11 +366,6 @@ class DeclarationVisitor: SyntaxVisitor {
             return .visitChildren
         }
 
-        // Skip CodingKeys enum cases — they are structural for Codable
-        if enclosingTypePath.last == "CodingKeys" {
-            return .visitChildren
-        }
-
         for element in node.elements {
             let name = element.name.identifierName
             let location = element.startLocation(converter: sourceLocationConverter)
@@ -404,7 +396,7 @@ class DeclarationVisitor: SyntaxVisitor {
             type: .protocol,
             file: filePath,
             line: lineNumber,
-            exclusionReason: .none,
+            exclusionReason: hasAttribute(named: "objc", in: node.attributes) ? .objcAttribute : .none,
             parentType: currentTypeName,
             identity: identity(for: node, signature: MemberSignature(kind: .type, name: name))
         ))
@@ -581,6 +573,12 @@ class DeclarationVisitor: SyntaxVisitor {
             result.merge(collectSourceProtocols(child, path: childPath), uniquingKeysWith: { first, _ in first })
         }
         return result
+    }
+
+    private func hasRuntimeExposure(attributes: AttributeListSyntax, modifiers: DeclModifierListSyntax) -> Bool {
+        guard !hasAttribute(named: "nonobjc", in: attributes) else { return false }
+        return hasAttribute(named: "objc", in: attributes) || hasAttribute(named: "NSManaged", in: attributes)
+            || modifiers.contains { $0.name.text == "dynamic" }
     }
 
     private func hasAttribute(named name: String, in attributes: AttributeListSyntax) -> Bool {

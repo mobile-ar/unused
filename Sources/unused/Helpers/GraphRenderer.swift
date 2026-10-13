@@ -236,12 +236,13 @@ struct GraphRenderer {
             "Exclusion: protocol implementation; requirement uses may be indirect."
         case .objcAttribute, .ibAction, .ibOutlet:
             "Exclusion: \(reason.description); runtime or Interface Builder uses may be indirect."
-        case .caseIterable:
-            "Exclusion: CaseIterable; synthesized references may be indirect."
+
         case .mainAttribute:
             "Exclusion: @main; the runtime supplies the entry point."
         case .unresolvedProtocol:
             "Exclusion: protocol requirements unavailable; this may be a required witness."
+        case .unresolvedMacro:
+            "Exclusion: unresolved macro; generated references are uncertain."
         }
     }
 

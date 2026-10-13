@@ -120,7 +120,7 @@ struct WitnessResolver {
         )
     }
 
-    private func makeGraph() -> WitnessTypeGraph {
+    func makeGraph() -> WitnessTypeGraph {
         var definitions: [String: ProtocolDefinition] = [:]
         for (key, definition) in protocolDefinitions {
             let name = WitnessTypeGraph.nominalName(key)

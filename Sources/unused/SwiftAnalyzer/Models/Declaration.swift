@@ -17,11 +17,12 @@ enum ExclusionReason: String, Codable {
     case override
     case protocolImplementation
     case unresolvedProtocol
+    case unresolvedMacro
     case objcAttribute
     case ibAction
     case ibOutlet
     case writeOnly
-    case caseIterable
+
     case mainAttribute
     case none
 
@@ -30,11 +31,12 @@ enum ExclusionReason: String, Codable {
         case .override: return "override"
         case .protocolImplementation: return "protocol"
         case .unresolvedProtocol: return "unresolved protocol"
+        case .unresolvedMacro: return "unresolved macro"
         case .objcAttribute: return "@objc"
         case .ibAction: return "@IBAction"
         case .ibOutlet: return "@IBOutlet"
         case .writeOnly: return "write-only"
-        case .caseIterable: return "CaseIterable"
+
         case .mainAttribute: return "@main"
         case .none: return ""
         }

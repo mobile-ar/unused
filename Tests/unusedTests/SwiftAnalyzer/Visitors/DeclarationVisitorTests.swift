@@ -1181,7 +1181,7 @@ struct DeclarationVisitorTests {
     }
 
     @Test
-    func testCodingKeysEnumCasesSkipped() async throws {
+    func testCodingKeysEnumCasesCollectedForDependencyResolution() async throws {
         let source = """
         struct User: Codable {
             let name: String
@@ -1204,7 +1204,8 @@ struct DeclarationVisitorTests {
         visitor.walk(sourceFile)
 
         let enumCases = visitor.declarations.filter { $0.type == .enumCase }
-        #expect(enumCases.isEmpty)
+        #expect(enumCases.map(\.name) == ["name"])
+        #expect(enumCases.first?.parentType == "User.CodingKeys")
     }
 
     @Test

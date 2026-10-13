@@ -51,10 +51,11 @@ struct ReportService {
         let excludedProtocolItems = report.excluded.protocolImplementations
         let excludedObjcItems = report.excluded.objcItems
         let excludedMainItems = report.excluded.mainTypes
+        let excludedMacroItems = report.excluded.macroItems
         let testFileCount = report.summary.testFilesExcluded
         let options = report.options
 
-        let totalItems = unusedItems.count + excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count + excludedMainItems.count
+        let totalItems = report.allItems.count
         let idWidth = max(1, String(totalItems).count)
 
         let unusedFunctionItems = unusedItems.filter { $0.type == .function }
@@ -144,7 +145,7 @@ struct ReportService {
             }
         }
 
-        let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count + excludedMainItems.count
+        let totalExcluded = report.excluded.totalCount
 
         if totalExcluded > 0 || testFileCount > 0 {
             output("\nExcluded from results:".teal.bold)
@@ -165,11 +166,21 @@ struct ReportService {
             if !excludedMainItems.isEmpty {
                 output("  - ".overlay0 + "\(excludedMainItems.count)".yellow + " @main entry point(s)".subtext0)
             }
+            if !excludedMacroItems.isEmpty {
+                output("  - ".overlay0 + "\(excludedMacroItems.count)".yellow + " potential macro dependency(ies) retained; expansion unavailable".subtext0)
+            }
             if testFileCount > 0 {
                 output("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
             }
 
             if options.showExcluded {
+                if !excludedMacroItems.isEmpty {
+                    output("\n  Unresolved Macro Dependencies:".mauve)
+                    for item in excludedMacroItems {
+                        let idString = String(format: "%\(idWidth)d", item.id)
+                        output("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [unresolved macro]".overlay0)
+                    }
+                }
                 if !excludedOverrideItems.isEmpty {
                     output("\n  Overrides:".peach)
                     for item in excludedOverrideItems {

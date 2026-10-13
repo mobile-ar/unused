@@ -37,6 +37,8 @@ class SwiftAnalyzer {
     private var usedTypeIdentities: Set<DeclarationIdentity> = []
     private var callUsages: Set<CallUsage> = []
     private var usedMemberIdentities: Set<DeclarationIdentity> = []
+    private var implicitUsedIdentities: Set<DeclarationIdentity> = []
+    private var macroResolution = MacroDependencyResolution()
     private let moduleName: String?
     private let options: AnalyzerOptions
     private let directory: String
@@ -193,14 +195,15 @@ class SwiftAnalyzer {
         mergeDeclarationResults(declarationResults)
         resolveWitnessProviders()
 
-        // Post-process: mark enum cases belonging to CaseIterable enums
-        markCaseIterableEnumCases()
+        resolveImplicitDependencies(parsedFiles)
 
         // Step 4: Collect unused parameters in parallel
         let paramTracker = progressTrackerFactory(parsedFileCount, "Checking parameters...")
         let parameterResults: [[Declaration]] = await withTaskGroup(of: [Declaration].self) { group in
             let requirements = protocolRequirements
             let protectedCallables = witnessResolution.required.union(witnessResolution.uncertain)
+                .union(implicitUsedIdentities)
+                .union(declarations.filter { $0.shouldExcludeByDefault }.compactMap(\.identity))
             let moduleName = moduleName
             for parsed in parsedFiles {
                 group.addTask {
@@ -330,6 +333,11 @@ class SwiftAnalyzer {
         // that requires them, since we cannot inspect external protocol extensions.
         let protocolExtensionImplicitReads = buildProtocolExtensionImplicitReads()
         writeOnlyProperties.subtract(protocolExtensionImplicitReads)
+        for declaration in declarations where declaration.identity.map({ implicitUsedIdentities.contains($0) }) == true {
+            guard let owner = declaration.parentType else { continue }
+            writeOnlyProperties.remove(PropertyInfo(name: declaration.name, line: declaration.line,
+                                                   filePath: declaration.file, typeName: owner))
+        }
 
         // Step 6: Detect unused imports by cross-referencing per-file identifiers with module symbols
         await detectUnusedImports(allImportUsageResults)
@@ -519,11 +527,9 @@ class SwiftAnalyzer {
             return options.includeObjc
         case .writeOnly:
             return true // Write-only items are always included
-        case .caseIterable:
-            return false // CaseIterable enum cases are excluded by default
         case .mainAttribute:
             return false // @main types are entry points and are excluded by default
-        case .unresolvedProtocol:
+        case .unresolvedProtocol, .unresolvedMacro:
             return false
         case .none:
             return true
@@ -531,6 +537,7 @@ class SwiftAnalyzer {
     }
 
     private func isUsed(_ declaration: Declaration) -> Bool {
+        if let identity = declaration.identity, implicitUsedIdentities.contains(identity) { return true }
         let name = declaration.name
         if options.includeProtocols, let identity = declaration.identity,
            witnessResolution.required.contains(identity),
@@ -582,29 +589,38 @@ class SwiftAnalyzer {
         return false
     }
 
-    private func markCaseIterableEnumCases() {
-        let caseIterableEnums = typeProtocolConformance
-            .filter { $0.value.contains("CaseIterable") }
-            .map(\.key)
-        let caseIterableSet = Set(caseIterableEnums)
-
-        guard !caseIterableSet.isEmpty else { return }
-
+    private func resolveImplicitDependencies(_ parsedFiles: [ParsedFile]) {
+        let graph = WitnessResolver(
+            protocolDefinitions: protocolDefinitions, typeInheritance: typeInheritance,
+            typeKinds: typeKinds, typeAliases: typeAliases, unresolvedProtocols: unresolvedProtocols
+        ).makeGraph()
+        implicitUsedIdentities = SynthesizedDependencyResolver(
+            declarations: declarations, parsedFiles: parsedFiles, graph: graph
+        ).resolve()
+        implicitUsedIdentities.formUnion(PropertyWrapperDependencyResolver(
+            declarations: declarations, parsedFiles: parsedFiles, graph: graph
+        ).resolve())
+        macroResolution = MacroDependencyResolver(
+            declarations: declarations, parsedFiles: parsedFiles, graph: graph,
+            propertyWrappers: propertyWrappers.union(projectPropertyWrappers)
+        ).resolve()
+        implicitUsedIdentities.formUnion(macroResolution.used)
+        let runtimeReasons = RuntimeDependencyResolver(
+            declarations: declarations, parsedFiles: parsedFiles, graph: graph
+        ).resolve()
         declarations = declarations.map { declaration in
-            guard declaration.type == .enumCase,
-                  let parentType = declaration.parentType,
-                  caseIterableSet.contains(parentType) else {
+            guard let identity = declaration.identity else { return declaration }
+            let reason: ExclusionReason
+            if macroResolution.uncertain.contains(identity), !implicitUsedIdentities.contains(identity) {
+                reason = .unresolvedMacro
+            } else if let runtimeReason = runtimeReasons[identity] {
+                reason = runtimeReason
+            } else {
                 return declaration
             }
-            return Declaration(
-                name: declaration.name,
-                type: declaration.type,
-                file: declaration.file,
-                line: declaration.line,
-                exclusionReason: .caseIterable,
-                parentType: declaration.parentType,
-                identity: declaration.identity
-            )
+            return Declaration(name: declaration.name, type: declaration.type, file: declaration.file,
+                               line: declaration.line, exclusionReason: reason,
+                               parentType: declaration.parentType, identity: identity)
         }
     }
 
@@ -797,7 +813,6 @@ class SwiftAnalyzer {
         }
 
         let excludedOverrides = declarations.filter {
-            $0.type == .function &&
             !isUsed($0) &&
             $0.exclusionReason == .override &&
             !options.includeOverrides
@@ -852,11 +867,19 @@ class SwiftAnalyzer {
             currentId += 1
         }
 
+        let excludedMacroItems = declarations.filter {
+            !isUsed($0) && $0.exclusionReason == .unresolvedMacro
+        }.map { declaration in
+            defer { currentId += 1 }
+            return ReportItem(id: currentId, declaration: declaration)
+        }
+
         let excludedItems = ExcludedItems(
             overrides: excludedOverrideItems,
             protocolImplementations: excludedProtocolItems,
             objcItems: excludedObjcItems,
-            mainTypes: excludedMainItems
+            mainTypes: excludedMainItems,
+            macroItems: excludedMacroItems
         )
 
         return Report(
@@ -864,7 +887,7 @@ class SwiftAnalyzer {
             excluded: excludedItems,
             options: ReportOptions(from: options),
             testFilesExcluded: excludedTestFileCount,
-            warnings: witnessResolution.warnings
+            warnings: (witnessResolution.warnings + macroResolution.warnings).sorted()
         )
     }
 

@@ -493,7 +493,7 @@ struct GraphRendererTests {
         #expect(output.contains("Syntax-only analysis"))
     }
 
-    @Test(arguments: [ExclusionReason.override, .protocolImplementation, .objcAttribute, .ibAction, .ibOutlet, .caseIterable, .mainAttribute])
+    @Test(arguments: [ExclusionReason.override, .protocolImplementation, .objcAttribute, .ibAction, .ibOutlet, .unresolvedMacro, .mainAttribute])
     func excludedTargetsShowContext(reason: ExclusionReason) {
         let output = GraphRenderer().render(graph(node("selected"), target: report(reason: reason)))
 

@@ -47,13 +47,14 @@ struct ExcludedItems: Codable, Equatable {
     let protocolImplementations: [ReportItem]
     let objcItems: [ReportItem]
     let mainTypes: [ReportItem]
+    var macroItems: [ReportItem] = []
 
     var totalCount: Int {
-        overrides.count + protocolImplementations.count + objcItems.count + mainTypes.count
+        overrides.count + protocolImplementations.count + objcItems.count + mainTypes.count + macroItems.count
     }
 
     var allItems: [ReportItem] {
-        overrides + protocolImplementations + objcItems + mainTypes
+        overrides + protocolImplementations + objcItems + mainTypes + macroItems
     }
 }
 

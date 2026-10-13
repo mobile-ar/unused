@@ -258,11 +258,11 @@ struct DeclarationIdentityVisitorTests {
     }
 
     @Test
-    func nestedCodingKeysRetainStructuralCaseExclusion() {
+    func nestedCodingKeysCasesRetainOwnerIdentityForDependencyResolution() {
         let sourceFile = Parser.parse(source: "struct Owner { enum CodingKeys: String { case value } }")
         let visitor = DeclarationVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
         visitor.walk(sourceFile)
-        #expect(!visitor.declarations.contains { $0.type == .enumCase })
+        #expect(visitor.declarations.first { $0.type == .enumCase }?.identity?.ownerName == "Owner.CodingKeys")
         #expect(visitor.declarations.first { $0.name == "CodingKeys" }?.identity?.ownerName == "Owner")
     }
 }
