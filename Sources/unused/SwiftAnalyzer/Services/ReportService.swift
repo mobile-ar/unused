@@ -39,9 +39,12 @@ struct ReportService {
         return FileManager.default.fileExists(atPath: reportURL.path)
     }
 
-    static func display(report: Report) {
+    static func display(report: Report, output: (String) -> Void = { print($0) }) {
+        if !report.warnings.isEmpty {
+            output("")
+        }
         for warning in report.warnings {
-            print("Warning: \(warning)".yellow)
+            output("Warning: \(warning)".yellow)
         }
         let unusedItems = report.unused
         let excludedOverrideItems = report.excluded.overrides
@@ -65,137 +68,137 @@ struct ReportService {
         let unusedImportItems = unusedItems.filter { $0.type == .import }
 
         if !unusedFunctionItems.isEmpty {
-            print("\nUnused Functions:".peach.bold)
+            output("\nUnused Functions:".peach.bold)
             for item in unusedFunctionItems {
                 let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
         }
 
         if !unusedVariableItems.isEmpty {
-            print("\nUnused Variables:".mauve.bold)
+            output("\nUnused Variables:".mauve.bold)
             for item in unusedVariableItems {
                 let reason = item.exclusionReason != .none ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + reason)
             }
         }
 
         if !unusedClassItems.isEmpty {
-            print("\nUnused Classes:".pink.bold)
+            output("\nUnused Classes:".pink.bold)
             for item in unusedClassItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !unusedEnumCaseItems.isEmpty {
-            print("\nUnused Enum Cases:".teal.bold)
+            output("\nUnused Enum Cases:".teal.bold)
             for item in unusedEnumCaseItems {
                 let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !unusedProtocolItems.isEmpty {
-            print("\nUnused Protocols:".sapphire.bold)
+            output("\nUnused Protocols:".sapphire.bold)
             for item in unusedProtocolItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !unusedTypealiasItems.isEmpty {
-            print("\nUnused Typealiases:".teal.bold)
+            output("\nUnused Typealiases:".teal.bold)
             for item in unusedTypealiasItems {
                 let parentInfo = item.parentType != nil ? " (\(item.parentType!))" : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !unusedParameterItems.isEmpty {
-            print("\nUnused Function Parameters:".lavender.bold)
+            output("\nUnused Function Parameters:".lavender.bold)
             for item in unusedParameterItems {
                 let parentInfo = item.parentType != nil ? " in \(item.parentType!)" : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + parentInfo.overlay0 + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !unusedImportItems.isEmpty {
-            print("\nUnused Imports:".pink.bold)
+            output("\nUnused Imports:".pink.bold)
             for item in unusedImportItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
             }
         }
 
         if !writeOnlyItems.isEmpty {
-            print("\nWrite-Only Variables (assigned but never read):".lavender.bold)
+            output("\nWrite-Only Variables (assigned but never read):".lavender.bold)
             for item in writeOnlyItems {
                 let idString = String(format: "%\(idWidth)d", item.id)
-                print("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0)
             }
         }
 
         let totalExcluded = excludedOverrideItems.count + excludedProtocolItems.count + excludedObjcItems.count + excludedMainItems.count
 
         if totalExcluded > 0 || testFileCount > 0 {
-            print("\nExcluded from results:".teal.bold)
+            output("\nExcluded from results:".teal.bold)
             if !excludedOverrideItems.isEmpty {
-                print("  - ".overlay0 + "\(excludedOverrideItems.count)".yellow + " override(s)".subtext0)
+                output("  - ".overlay0 + "\(excludedOverrideItems.count)".yellow + " override(s)".subtext0)
             }
             let confirmedProtocols = excludedProtocolItems.filter { $0.exclusionReason == .protocolImplementation }
             let uncertainProtocols = excludedProtocolItems.filter { $0.exclusionReason == .unresolvedProtocol }
             if !confirmedProtocols.isEmpty {
-                print("  - ".overlay0 + "\(confirmedProtocols.count)".yellow + " protocol implementation(s)".subtext0)
+                output("  - ".overlay0 + "\(confirmedProtocols.count)".yellow + " protocol implementation(s)".subtext0)
             }
             if !uncertainProtocols.isEmpty {
-                print("  - ".overlay0 + "\(uncertainProtocols.count)".yellow + " potential protocol witness(es) retained; requirements unavailable".subtext0)
+                output("  - ".overlay0 + "\(uncertainProtocols.count)".yellow + " potential protocol witness(es) retained; requirements unavailable".subtext0)
             }
             if !excludedObjcItems.isEmpty {
-                print("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
+                output("  - ".overlay0 + "\(excludedObjcItems.count)".yellow + " @objc/@IBAction/@IBOutlet item(s)".subtext0)
             }
             if !excludedMainItems.isEmpty {
-                print("  - ".overlay0 + "\(excludedMainItems.count)".yellow + " @main entry point(s)".subtext0)
+                output("  - ".overlay0 + "\(excludedMainItems.count)".yellow + " @main entry point(s)".subtext0)
             }
             if testFileCount > 0 {
-                print("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
+                output("  - ".overlay0 + "\(testFileCount)".yellow + " test file(s)".subtext0)
             }
 
             if options.showExcluded {
                 if !excludedOverrideItems.isEmpty {
-                    print("\n  Overrides:".peach)
+                    output("\n  Overrides:".peach)
                     for item in excludedOverrideItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
-                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                        output("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
 
                 if !excludedProtocolItems.isEmpty {
-                    print("\n  Protocol Implementations / Unresolved Witnesses:".mauve)
+                    output("\n  Protocol Implementations / Unresolved Witnesses:".mauve)
                     for item in excludedProtocolItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
-                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [\(item.exclusionReason.description)]".overlay0)
+                        output("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [\(item.exclusionReason.description)]".overlay0)
                     }
                 }
 
                 if !excludedObjcItems.isEmpty {
-                    print("\n  @objc/@IBAction/@IBOutlet:".pink)
+                    output("\n  @objc/@IBAction/@IBOutlet:".pink)
                     for item in excludedObjcItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
-                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                        output("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
 
                 if !excludedMainItems.isEmpty {
-                    print("\n  @main Entry Points:".teal)
+                    output("\n  @main Entry Points:".teal)
                     for item in excludedMainItems {
                         let idString = String(format: "%\(idWidth)d", item.id)
-                        print("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
+                        output("    [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky)
                     }
                 }
             }
@@ -215,18 +218,18 @@ struct ReportService {
             }
 
             if !flags.isEmpty {
-                print("\nUse \(flags.joined(separator: ", ")) to include these in results.".overlay0)
+                output("\nUse \(flags.joined(separator: ", ")) to include these in results.".overlay0)
             }
             if !options.showExcluded {
-                print("Use --show-excluded to see the list of excluded items.".overlay0)
+                output("Use --show-excluded to see the list of excluded items.".overlay0)
             }
         }
 
         if unusedItems.isEmpty {
             if totalExcluded > 0 {
-                print("\nNo unused code found (excluding \(totalExcluded) override/protocol/framework items)!".green.bold)
+                output("\nNo unused code found (excluding \(totalExcluded) override/protocol/framework items)!".green.bold)
             } else {
-                print("\nNo unused code found!".green.bold)
+                output("\nNo unused code found!".green.bold)
             }
         }
     }

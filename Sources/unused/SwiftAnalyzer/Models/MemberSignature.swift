@@ -4,6 +4,8 @@ struct MemberSignature: Codable, Hashable, Sendable {
     var isStatic = false
     var parameterLabels: [String] = []
     var parameterTypes: [String] = []
+    var defaultParameterIndices: Set<Int> = []
+    var variadicParameterIndices: Set<Int> = []
     var resultType: String? = nil
     var genericParameters: [String] = []
     var isAsync = false

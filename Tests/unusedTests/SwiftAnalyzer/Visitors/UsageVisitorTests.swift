@@ -541,7 +541,7 @@ struct UsageVisitorTests {
     }
 
     @Test
-    func testImplicitMemberAccessIsUnqualified() throws {
+    func testArrayAnnotationQualifiesMemberAccess() throws {
         let source = """
         func test() {
             let items: [Int] = []
@@ -553,7 +553,8 @@ struct UsageVisitorTests {
         let visitor = UsageVisitor()
         visitor.walk(sourceFile)
 
-        #expect(visitor.unqualifiedMemberUsages.contains("count"))
+        #expect(visitor.qualifiedMemberUsages.contains(QualifiedUsage(typeName: "Array", memberName: "count")))
+        #expect(!visitor.unqualifiedMemberUsages.contains("count"))
     }
 
     @Test

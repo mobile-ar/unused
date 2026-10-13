@@ -13,4 +13,5 @@ struct ProtocolVisitorResult: Sendable {
     var typeInheritance: [String: Set<String>] = [:]
     var typeKinds: [String: String] = [:]
     var typeAliases: [String: Set<String>] = [:]
+    var typeGenericParameters: [String: Set<String>] = [:]
 }

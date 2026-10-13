@@ -16,6 +16,7 @@ class ProtocolVisitor: SyntaxVisitor {
     private(set) var typeInheritance: [String: Set<String>] = [:]
     private(set) var typeKinds: [String: String] = [:]
     private(set) var typeAliases: [String: Set<String>] = [:]
+    private(set) var typeGenericParameters: [String: Set<String>] = [:]
 
     override init(viewMode: SyntaxTreeViewMode = .sourceAccurate) {
         super.init(viewMode: viewMode)
@@ -32,7 +33,8 @@ class ProtocolVisitor: SyntaxVisitor {
             protocolDefinitions: protocolDefinitions,
             typeInheritance: typeInheritance,
             typeKinds: typeKinds,
-            typeAliases: typeAliases
+            typeAliases: typeAliases,
+            typeGenericParameters: typeGenericParameters
         )
     }
 
@@ -63,7 +65,8 @@ class ProtocolVisitor: SyntaxVisitor {
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         collectType(
             name: SourceProtocolNameContext.qualified(node.name.identifierName, at: node),
-            kind: "class", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause)
+            kind: "class", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause),
+            genericParameters: node.genericParameterClause
         )
         return .visitChildren
     }
@@ -71,7 +74,8 @@ class ProtocolVisitor: SyntaxVisitor {
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         collectType(
             name: SourceProtocolNameContext.qualified(node.name.identifierName, at: node),
-            kind: "struct", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause)
+            kind: "struct", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause),
+            genericParameters: node.genericParameterClause
         )
         return .visitChildren
     }
@@ -79,7 +83,8 @@ class ProtocolVisitor: SyntaxVisitor {
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         collectType(
             name: SourceProtocolNameContext.qualified(node.name.identifierName, at: node),
-            kind: "enum", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause)
+            kind: "enum", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause),
+            genericParameters: node.genericParameterClause
         )
         return .visitChildren
     }
@@ -87,7 +92,8 @@ class ProtocolVisitor: SyntaxVisitor {
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         collectType(
             name: SourceProtocolNameContext.qualified(node.name.identifierName, at: node),
-            kind: "actor", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause)
+            kind: "actor", inheritedTypes: SwiftTypeName.inheritedNames(node.inheritanceClause),
+            genericParameters: node.genericParameterClause
         )
         return .visitChildren
     }
@@ -117,7 +123,11 @@ class ProtocolVisitor: SyntaxVisitor {
         return .visitChildren
     }
 
-    private func collectType(name: String, kind: String, inheritedTypes: Set<String>) {
+    private func collectType(
+        name: String, kind: String, inheritedTypes: Set<String>,
+        genericParameters: GenericParameterClauseSyntax? = nil
+    ) {
+        typeGenericParameters[name, default: []].formUnion(genericParameters?.parameters.map { $0.name.identifierName } ?? [])
         typeKinds[name] = kind
         typeInheritance[name, default: []].formUnion(inheritedTypes)
         conformedProtocols.formUnion(inheritedTypes)

@@ -122,6 +122,7 @@ class DeclarationVisitor: SyntaxVisitor {
                 let location = node.startLocation(converter: sourceLocationConverter)
                 let lineNumber = location.line
 
+                let declarationIdentity = identity(for: binding, signature: signature)
                 declarations.append(Declaration(
                     name: name,
                     type: .variable,
@@ -129,10 +130,10 @@ class DeclarationVisitor: SyntaxVisitor {
                     line: lineNumber,
                     exclusionReason: exclusionReason,
                     parentType: currentTypeName,
-                    identity: identity(for: binding, signature: signature)
+                    identity: declarationIdentity
                 ))
 
-                if let typeName = currentTypeName {
+                if declarationIdentity.isTypeMember, let typeName = currentTypeName {
                     let propertyInfo = PropertyInfo(
                         name: name,
                         line: lineNumber,

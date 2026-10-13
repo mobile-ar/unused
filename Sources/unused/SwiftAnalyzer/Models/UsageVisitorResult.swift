@@ -8,4 +8,5 @@ struct UsageVisitorResult: Sendable {
     let unqualifiedMemberUsages: Set<String>
     let bareIdentifierUsages: Set<String>
     var typeReferences: Set<TypeReference> = []
+    var callUsages: Set<CallUsage> = []
 }

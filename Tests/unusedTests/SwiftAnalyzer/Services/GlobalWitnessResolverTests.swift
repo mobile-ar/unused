@@ -334,7 +334,9 @@ struct GlobalWitnessResolverTests {
             ])
         #expect(result.typeConformances["Worker"] == ["SDK.External"])
         #expect(result.warnings.count == 1)
-        #expect(result.warnings.first?.contains("SDK.External") == true)
+        #expect(result.warnings == [
+            "Cannot resolve inherited type or protocol 'SDK.External' for 'Worker'. Potentially required members are excluded from unused results to avoid false positives."
+        ])
     }
 
     @Test
@@ -351,7 +353,9 @@ struct GlobalWitnessResolverTests {
 
         #expect(result.required == [try #require(required.identity)])
         #expect(result.uncertain == [try #require(possible.identity)])
-        #expect(result.warnings.count == 1)
+        #expect(result.warnings == [
+            "Protocol requirements for 'P' used by 'Worker' are incomplete. Members that may satisfy missing requirements are excluded from unused results to avoid false positives."
+        ])
     }
 
     @Test
@@ -369,6 +373,21 @@ struct GlobalWitnessResolverTests {
         #expect(result.required == [try #require(witness.identity)])
         #expect(result.uncertain == [try #require(unknown.identity)])
         #expect(result.typeConformances["Worker"] == ["P", "External"])
+    }
+
+    @Test
+    func unavailableSuperclassWarningExplainsWhyMembersAreNotReportedUnused() throws {
+        let candidate = declaration("BodyIdentifierCollector", signature: function("visit"))
+        let result = resolver(
+            definitions: [:], inheritance: ["BodyIdentifierCollector": ["SyntaxVisitor"]],
+            kinds: ["BodyIdentifierCollector": "class"], unresolved: ["SyntaxVisitor"]
+        ).resolve(declarations: [candidate])
+
+        #expect(result.required.isEmpty)
+        #expect(result.uncertain == [try #require(candidate.identity)])
+        #expect(result.warnings == [
+            "Cannot resolve inherited type or protocol 'SyntaxVisitor' for 'BodyIdentifierCollector'. Potentially required members are excluded from unused results to avoid false positives."
+        ])
     }
 
     @Test

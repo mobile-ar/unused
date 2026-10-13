@@ -59,6 +59,12 @@ extension MemberSignature {
         parameterTypes = parameters.map { parameter in
             Self.typeSpelling(parameter.type) + (parameter.ellipsis?.text ?? "")
         }
+        defaultParameterIndices = Set(parameters.enumerated().compactMap { index, parameter in
+            parameter.defaultValue == nil ? nil : index
+        })
+        variadicParameterIndices = Set(parameters.enumerated().compactMap { index, parameter in
+            parameter.ellipsis == nil ? nil : index
+        })
     }
 
     private mutating func setAccessorEffects(_ block: AccessorBlockSyntax?) {

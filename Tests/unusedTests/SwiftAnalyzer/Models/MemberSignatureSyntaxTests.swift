@@ -49,6 +49,8 @@ struct MemberSignatureSyntaxTests {
         let signature = MemberSignature(function: declaration)
         #expect(signature.parameterTypes == ["any Drawable", "Int..."])
         #expect(signature.parameterLabels == ["_", "values"])
+        #expect(signature.defaultParameterIndices.isEmpty)
+        #expect(signature.variadicParameterIndices == [1])
         #expect(signature.resultType == nil)
         #expect(!signature.isStatic)
         #expect(!signature.isAsync)
@@ -126,6 +128,127 @@ struct MemberSignatureSyntaxTests {
         #expect(aliasSignature.name == "default")
         #expect(aliasSignature.resultType == "Namespace.Box<Type>")
         #expect(aliasSignature.genericParameters == ["Type"])
+    }
+
+    @Test
+    func functionsCaptureDefaultAndVariadicIndicesByParameterPosition() throws {
+        let declaration = try parseMember(
+            "func run(prefix: String = \"\", value: Int, values: Double..., completion: () -> Void = {}) {}",
+            as: FunctionDeclSyntax.self
+        )
+        let signature = MemberSignature(function: declaration)
+
+        #expect(signature.parameterLabels == ["prefix", "value", "values", "completion"])
+        #expect(signature.parameterTypes == ["String", "Int", "Double...", "()->Void"])
+        #expect(signature.defaultParameterIndices == [0, 3])
+        #expect(signature.variadicParameterIndices == [2])
+    }
+
+    @Test
+    func initializersCaptureDefaultsVariadicsAndExternalLabels() throws {
+        let declaration = try parseMember(
+            "init(_ value: Int = 0, named name: String, values: Double..., completion: () -> Void = {}) {}",
+            as: InitializerDeclSyntax.self
+        )
+        let signature = MemberSignature(initializer: declaration)
+
+        #expect(signature.kind == .initializer)
+        #expect(signature.parameterLabels == ["_", "named", "values", "completion"])
+        #expect(signature.parameterTypes == ["Int", "String", "Double...", "()->Void"])
+        #expect(signature.defaultParameterIndices == [0, 3])
+        #expect(signature.variadicParameterIndices == [2])
+    }
+
+    @Test
+    func subscriptsCaptureDefaultsVariadicsAndImplicitUnderscoreLabels() throws {
+        let declaration = try parseMember(
+            "subscript(index: Int = 0, named key: String, values: Double..., fallback value: Int = 1) -> Int { 0 }",
+            as: SubscriptDeclSyntax.self
+        )
+        let signature = MemberSignature(subscript: declaration)
+
+        #expect(signature.kind == .subscript)
+        #expect(signature.parameterLabels == ["_", "named", "_", "fallback"])
+        #expect(signature.parameterTypes == ["Int", "String", "Double...", "Int"])
+        #expect(signature.defaultParameterIndices == [0, 3])
+        #expect(signature.variadicParameterIndices == [2])
+    }
+
+    @Test
+    func requiredNonvariadicParametersHaveEmptyIndexSetsForEveryCallableKind() throws {
+        let function = MemberSignature(function: try parseMember(
+            "func run(value: Int) {}", as: FunctionDeclSyntax.self
+        ))
+        let initializer = MemberSignature(initializer: try parseMember(
+            "init(value: Int) {}", as: InitializerDeclSyntax.self
+        ))
+        let subscriptSignature = MemberSignature(subscript: try parseMember(
+            "subscript(index: Int) -> Int { 0 }", as: SubscriptDeclSyntax.self
+        ))
+
+        for signature in [function, initializer, subscriptSignature] {
+            #expect(signature.defaultParameterIndices.isEmpty)
+            #expect(signature.variadicParameterIndices.isEmpty)
+        }
+    }
+
+    @Test
+    func parameterlessFunctionsAndInitializersHaveEmptyParameterMetadata() throws {
+        let function = MemberSignature(function: try parseMember("func run() {}", as: FunctionDeclSyntax.self))
+        let initializer = MemberSignature(initializer: try parseMember("init() {}", as: InitializerDeclSyntax.self))
+
+        for signature in [function, initializer] {
+            #expect(signature.parameterLabels.isEmpty)
+            #expect(signature.parameterTypes.isEmpty)
+            #expect(signature.defaultParameterIndices.isEmpty)
+            #expect(signature.variadicParameterIndices.isEmpty)
+        }
+    }
+
+    @Test
+    func defaultExpressionContentsDoNotChangeSignatureIdentity() throws {
+        let first = MemberSignature(function: try parseMember(
+            "func run(value: Int = 1, completion: () -> Void = {}) {}", as: FunctionDeclSyntax.self
+        ))
+        let second = MemberSignature(function: try parseMember(
+            "func run(value: Int = compute(2, 3), completion: () -> Void = { print(1) }) {}",
+            as: FunctionDeclSyntax.self
+        ))
+
+        #expect(first.defaultParameterIndices == [0, 1])
+        #expect(second.defaultParameterIndices == [0, 1])
+        #expect(first == second)
+        #expect(Set([first, second]).count == 1)
+    }
+
+    @Test
+    func defaultParameterPositionsParticipateInSignatureEqualityAndHashing() throws {
+        let spellings = [
+            "func run(first: Int, second: Int) {}",
+            "func run(first: Int = 0, second: Int) {}",
+            "func run(first: Int, second: Int = 0) {}",
+            "func run(first: Int = 0, second: Int = 0) {}"
+        ]
+        let signatures = try spellings.map {
+            MemberSignature(function: try parseMember($0, as: FunctionDeclSyntax.self))
+        }
+
+        #expect(signatures.map(\.defaultParameterIndices) == [[], [0], [1], [0, 1]])
+        #expect(Set(signatures).count == spellings.count)
+    }
+
+    @Test
+    func variadicIndicesUseParameterPositionsRatherThanLabelOccurrences() throws {
+        let declaration = try parseMember(
+            "func run(value first: Int = 0, value remaining: Int..., end: String) {}",
+            as: FunctionDeclSyntax.self
+        )
+        let signature = MemberSignature(function: declaration)
+
+        #expect(signature.parameterLabels == ["value", "value", "end"])
+        #expect(signature.defaultParameterIndices == [0])
+        #expect(signature.variadicParameterIndices == [1])
+        #expect(signature.parameterTypes == ["Int", "Int...", "String"])
     }
 
     private func parseMember<Node: DeclSyntaxProtocol>(_ source: String, as type: Node.Type) throws -> Node {

@@ -63,12 +63,12 @@ struct WitnessResolver {
                 result.uncertain.formUnion(candidates)
                 for name in closure.unknown.sorted() {
                     warnings.insert(
-                        "Unresolved protocol or inheritance '\(name)' for '\(type)'; plausible witness providers retained as uncertain."
+                        "Cannot resolve inherited type or protocol '\(name)' for '\(type)'. Potentially required members are excluded from unused results to avoid false positives."
                     )
                 }
                 for name in closure.partial.sorted() {
                     warnings.insert(
-                        "Incomplete protocol '\(name)' for '\(type)'; additional witness providers may be required."
+                        "Protocol requirements for '\(name)' used by '\(type)' are incomplete. Members that may satisfy missing requirements are excluded from unused results to avoid false positives."
                     )
                 }
             }

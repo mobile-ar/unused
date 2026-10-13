@@ -10,17 +10,20 @@ import Foundation
 /// so that Xcode displays them as inline warnings when the tool is run as a build phase script.
 struct XcodeFormatter {
 
-    static func display(report: Report) {
+    static func display(report: Report, output: (String) -> Void = { print($0) }) {
+        if !report.warnings.isEmpty {
+            output("")
+        }
         for warning in report.warnings {
-            print("warning: \(warning)")
+            output("warning: \(warning)")
         }
         for item in report.unused {
-            printWarning(for: item)
+            printWarning(for: item, output: output)
         }
 
         let count = report.unused.count
         if count > 0 {
-            print("warning: \(count) unused declaration\(count == 1 ? "" : "s") found")
+            output("warning: \(count) unused declaration\(count == 1 ? "" : "s") found")
         }
     }
 
@@ -35,7 +38,7 @@ struct XcodeFormatter {
         }
     }
 
-    private static func printWarning(for item: ReportItem) {
+    private static func printWarning(for item: ReportItem, output: (String) -> Void = { print($0) }) {
         let filePath = absolutePath(for: item.file)
         let typeLabel = typeDescription(for: item.type)
         var message = "Unused \(typeLabel) '\(item.name)'"
@@ -48,7 +51,7 @@ struct XcodeFormatter {
             message += " [write-only]"
         }
 
-        print("\(filePath):\(item.line): warning: \(message)")
+        output("\(filePath):\(item.line): warning: \(message)")
     }
 
     private static func typeDescription(for type: DeclarationType) -> String {

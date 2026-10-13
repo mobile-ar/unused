@@ -30,10 +30,13 @@ class SwiftAnalyzer {
     private var typeInheritance: [String: Set<String>] = [:]
     private var typeKinds: [String: String] = [:]
     private var typeAliases: [String: Set<String>] = [:]
+    private var typeGenericParameters: [String: Set<String>] = [:]
     private var unresolvedProtocols: Set<String> = []
     private var witnessResolution = WitnessResolution()
     private var typeReferences: Set<TypeReference> = []
     private var usedTypeIdentities: Set<DeclarationIdentity> = []
+    private var callUsages: Set<CallUsage> = []
+    private var usedMemberIdentities: Set<DeclarationIdentity> = []
     private let moduleName: String?
     private let options: AnalyzerOptions
     private let directory: String
@@ -233,7 +236,16 @@ class SwiftAnalyzer {
             return $0.identity?.moduleName.map { [name, $0 + "." + name] } ?? [name]
         })
         let allPropertyWrappers = propertyWrappers.union(projectPropertyWrappers)
-        let allTypePropertyDeclarations = typePropertyDeclarations
+        let referenceResolver = ExplicitReferenceResolver(
+            declarations: declarations, protocolDefinitions: protocolDefinitions,
+            typeInheritance: typeInheritance, typeKinds: typeKinds, typeAliases: typeAliases
+        )
+        let bindingIndex = ReferenceBindingIndex.merging(
+            typeProperties: typePropertyDeclarations, typeGenericParameters: typeGenericParameters,
+            ownerResolver: referenceResolver.ownerResolver
+        )
+        let allTypePropertyDeclarations = bindingIndex.typeProperties
+        let allTypeGenericParameters = bindingIndex.typeGenericParameters
 
         let usageTracker = progressTrackerFactory(parsedFileCount, "Collecting usage...")
         let combinedResults: [(usage: UsageVisitorResult, writeOnly: WriteOnlyVisitorResult, importUsage: ImportUsageResult)] = await withTaskGroup(
@@ -242,7 +254,10 @@ class SwiftAnalyzer {
             for parsed in parsedFiles {
                 group.addTask {
                     // Usage visitor
-                    let usageVisitor = UsageVisitor(knownTypeNames: knownTypeNames)
+                    let usageVisitor = UsageVisitor(
+                        knownTypeNames: knownTypeNames, typeProperties: allTypePropertyDeclarations,
+                        typeGenericParameters: allTypeGenericParameters
+                    )
                     usageVisitor.walk(parsed.sourceFile)
                     let usageResult = UsageVisitorResult(
                         usedIdentifiers: usageVisitor.usedIdentifiers,
@@ -253,7 +268,8 @@ class SwiftAnalyzer {
                             var reference = reference
                             reference.file = parsed.url.path
                             return reference
-                        })
+                        }),
+                        callUsages: usageVisitor.callUsages
                     )
 
                     // Write-only visitor (runs on the same AST in the same task)
@@ -299,12 +315,14 @@ class SwiftAnalyzer {
             unqualifiedMemberUsages.formUnion(usageResult.unqualifiedMemberUsages)
             bareIdentifierUsages.formUnion(usageResult.bareIdentifierUsages)
             typeReferences.formUnion(usageResult.typeReferences)
+            callUsages.formUnion(usageResult.callUsages)
             allPropertyReads.formUnion(writeOnlyResult.propertyReads)
             allPropertyWrites.formUnion(writeOnlyResult.propertyWrites)
             allImportUsageResults.append(importResult)
         }
 
         usedTypeIdentities = TypeReferenceResolver(declarations: declarations).resolve(typeReferences)
+        usedMemberIdentities = referenceResolver.resolve(memberUsages: qualifiedMemberUsages, calls: callUsages)
         writeOnlyProperties = allPropertyWrites.subtracting(allPropertyReads)
 
         // Remove properties that are read via protocol extensions from write-only set.
@@ -350,6 +368,9 @@ class SwiftAnalyzer {
             }
             for (name, targets) in result.typeAliases {
                 typeAliases[name, default: []].formUnion(targets)
+            }
+            for (name, parameters) in result.typeGenericParameters {
+                typeGenericParameters[name, default: []].formUnion(parameters)
             }
             typeKinds.merge(result.typeKinds, uniquingKeysWith: { first, _ in first })
             projectDefinedProtocols.formUnion(result.projectDefinedProtocols)
@@ -525,7 +546,9 @@ class SwiftAnalyzer {
             return usedIdentifiers.contains(name)
         }
 
-        if qualifiedMemberUsages.contains(QualifiedUsage(typeName: parentType, memberName: name)) {
+        if let identity = declaration.identity {
+            if usedMemberIdentities.contains(identity) { return true }
+        } else if qualifiedMemberUsages.contains(QualifiedUsage(typeName: parentType, memberName: name)) {
             return true
         }
 
