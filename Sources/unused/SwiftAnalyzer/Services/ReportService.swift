@@ -59,8 +59,8 @@ struct ReportService {
         let idWidth = max(1, String(totalItems).count)
 
         let unusedFunctionItems = unusedItems.filter { $0.type == .function }
-        let unusedVariableItems = unusedItems.filter { $0.type == .variable && $0.exclusionReason != .writeOnly }
-        let writeOnlyItems = unusedItems.filter { $0.exclusionReason == .writeOnly }
+        let unusedVariableItems = unusedItems.filter { $0.type == .variable && !$0.isWriteOnly && $0.exclusionReason != .writeOnly }
+        let writeOnlyItems = unusedItems.filter { $0.isWriteOnly || $0.exclusionReason == .writeOnly }
         let unusedClassItems = unusedItems.filter { $0.type == .class }
         let unusedEnumCaseItems = unusedItems.filter { $0.type == .enumCase }
         let unusedProtocolItems = unusedItems.filter { $0.type == .protocol }
@@ -121,7 +121,8 @@ struct ReportService {
         }
 
         if !unusedParameterItems.isEmpty {
-            output("\nUnused Function Parameters:".lavender.bold)
+            output("\nUnused Local Parameter Bindings:".lavender.bold)
+            output("  Signature removal is not proven safe. Review bindings manually and keep callable signatures unchanged.".overlay0)
             for item in unusedParameterItems {
                 let parentInfo = item.parentType != nil ? " in \(item.parentType!)" : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
@@ -140,8 +141,10 @@ struct ReportService {
         if !writeOnlyItems.isEmpty {
             output("\nWrite-Only Variables (assigned but never read):".lavender.bold)
             for item in writeOnlyItems {
+                let reason = item.exclusionReason != .none && item.exclusionReason != .writeOnly
+                    ? " [\(item.exclusionReason.description)]".overlay0 : ""
                 let idString = String(format: "%\(idWidth)d", item.id)
-                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0)
+                output("  [\(idString)] - ".overlay0 + "\(item.name)".yellow + " in ".subtext0 + "\(item.file) : \(item.line)".sky + " [write-only]".overlay0 + reason)
             }
         }
 

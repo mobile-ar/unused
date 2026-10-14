@@ -4,6 +4,75 @@ final class SDKInterfaceIndexVisitor: SyntaxVisitor {
     private(set) var index = SDKInterfaceIndex()
     private var scopes: [String] = []
 
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+        if let moduleName = node.path.first?.name.identifierName {
+            index.importedModules.insert(moduleName)
+        }
+        let isReexported = node.attributes.contains { element in
+            guard case .attribute(let attribute) = element else { return false }
+            return SwiftTypeName.canonical(attribute.attributeName) == "_exported"
+        }
+        guard isReexported else { return .skipChildren }
+        let path = node.path.map { $0.name.identifierName }.joined(separator: ".")
+        if node.importKindSpecifier != nil || node.path.count != 1 {
+            // Scoped imports and Clang submodules cannot be flattened as whole-module re-exports.
+            index.symbolInventoryUncertainties.insert(.scopedReexport(path))
+        }
+        if let moduleName = node.path.first?.name.identifierName {
+            index.reexportedModules.insert(moduleName)
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: OperatorDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert(node.name.identifierName)
+        return .skipChildren
+    }
+
+    override func visit(_ node: MacroDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert(node.name.identifierName)
+        walk(node.attributes)
+        return .skipChildren
+    }
+
+    override func visit(_ node: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.symbolInventoryUncertainties.insert(.macroExpansion)
+        return .skipChildren
+    }
+
+    override func visit(_ node: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind {
+        index.symbolInventoryUncertainties.insert(.macroExpansion)
+        return .skipChildren
+    }
+
+    override func visit(_ node: AssociatedTypeDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert(node.name.identifierName)
+        walk(node.attributes)
+        return .skipChildren
+    }
+
+    override func visit(_ node: AttributeSyntax) -> SyntaxVisitorContinueKind {
+        let name = SwiftTypeName.canonical(node.attributeName)
+        switch name {
+        case "available", "frozen", "inlinable", "usableFromInline", "_alwaysEmitIntoClient",
+             "propertyWrapper", "resultBuilder", "attached", "freestanding":
+            break
+        case "_hasMissingDesignatedInitializers":
+            index.symbolInventoryUncertainties.insert(.implicitExports)
+        default:
+            // Only known compiler annotations are exempt: an unknown attribute may generate exports.
+            index.symbolInventoryUncertainties.insert(.attributeExpansion(name))
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: PrecedenceGroupDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert(node.name.identifierName)
+        // Precedence relationships are token references, not ordinary identifier/type uses.
+        index.symbolInventoryUncertainties.insert(.unrepresentedDeclaration)
+        return .skipChildren
+    }
+
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = scopedName(node.name.identifierName)
         var definition = ProtocolDefinition(name: name)
@@ -51,6 +120,10 @@ final class SDKInterfaceIndexVisitor: SyntaxVisitor {
     override func visitPost(_ node: ActorDeclSyntax) { scopes.removeLast() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        if node.inheritanceClause != nil {
+            // Retroactive conformances can make an import necessary without a named member use.
+            index.symbolInventoryUncertainties.insert(.implicitExports)
+        }
         scopes.append(SwiftTypeName.canonical(node.extendedType))
         return .visitChildren
     }
@@ -59,20 +132,21 @@ final class SDKInterfaceIndexVisitor: SyntaxVisitor {
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         index.exportedSymbols.insert(node.name.identifierName)
+        walk(node.attributes)
         return .skipChildren
     }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         for binding in node.bindings {
-            if let identifier = binding.pattern.as(IdentifierPatternSyntax.self) {
-                index.exportedSymbols.insert(identifier.identifier.identifierName)
-            }
+            collectBindingNames(binding.pattern)
         }
+        walk(node.attributes)
         return .skipChildren
     }
 
     override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
         for element in node.elements { index.exportedSymbols.insert(element.name.identifierName) }
+        walk(node.attributes)
         return .skipChildren
     }
 
@@ -91,13 +165,40 @@ final class SDKInterfaceIndexVisitor: SyntaxVisitor {
             alias.isComplete = alias.isComplete && existing.isComplete
         }
         index.aliases[name] = alias
+        walk(node.attributes)
         return .skipChildren
     }
 
-    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { .skipChildren }
-    override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind { .skipChildren }
-    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind { .skipChildren }
+    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert("init")
+        walk(node.attributes)
+        return .skipChildren
+    }
+
+    override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        walk(node.attributes)
+        return .skipChildren
+    }
+
+    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
+        index.exportedSymbols.insert("subscript")
+        walk(node.attributes)
+        return .skipChildren
+    }
+
     override func visit(_ node: CodeBlockSyntax) -> SyntaxVisitorContinueKind { .skipChildren }
+
+    private func collectBindingNames(_ pattern: PatternSyntax) {
+        if let identifier = pattern.as(IdentifierPatternSyntax.self) {
+            index.exportedSymbols.insert(identifier.identifier.identifierName)
+        } else if let tuple = pattern.as(TuplePatternSyntax.self) {
+            for element in tuple.elements { collectBindingNames(element.pattern) }
+        } else if let binding = pattern.as(ValueBindingPatternSyntax.self) {
+            collectBindingNames(binding.pattern)
+        } else if !pattern.is(WildcardPatternSyntax.self) {
+            index.symbolInventoryUncertainties.insert(.unrepresentedDeclaration)
+        }
+    }
 
     private func scopedName(_ name: String) -> String {
         (scopes + [name]).joined(separator: ".")

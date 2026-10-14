@@ -6,7 +6,21 @@ import SwiftSyntax
 
 class UnusedParameterVisitor: SyntaxVisitor {
 
-    private(set) var unusedParameters: [Declaration] = []
+    private(set) var unusedParameterBindings: [UnusedParameterBinding] = []
+
+    var unusedParameters: [Declaration] {
+        unusedParameterBindings.map { binding in
+            Declaration(
+                name: binding.name,
+                type: .parameter,
+                file: binding.file,
+                line: binding.line,
+                exclusionReason: .none,
+                parentType: binding.parentType,
+                identity: binding.identity
+            )
+        }
+    }
     let filePath: String
     let protocolRequirements: [String: Set<String>]
     private var currentTypeName: String?
@@ -45,35 +59,11 @@ class UnusedParameterVisitor: SyntaxVisitor {
             return .skipChildren
         }
 
-        let parameters = extractParameters(from: node.signature.parameterClause)
-        guard !parameters.isEmpty else {
-            return .skipChildren
-        }
-
-        let bodyIdentifiers = collectBodyIdentifiers(from: node.body)
-        let functionName = node.name.identifierName
-
-        for param in parameters {
-            if !bodyIdentifiers.contains(param.name) {
-                let location = param.token.startLocation(converter: sourceLocationConverter)
-                let parentContext: String
-                if let typeName = currentTypeName {
-                    parentContext = "\(typeName).\(functionName)"
-                } else {
-                    parentContext = functionName
-                }
-
-                unusedParameters.append(Declaration(
-                    name: param.name,
-                    type: .parameter,
-                    file: filePath,
-                    line: location.line,
-                    exclusionReason: .none,
-                    parentType: parentContext,
-                    identity: parameterIdentity(name: param.name, token: param.token)
-                ))
-            }
-        }
+        collectUnusedBindings(
+            parameters: node.signature.parameterClause,
+            body: node.body,
+            callableName: node.name.identifierName
+        )
 
         return .skipChildren
     }
@@ -99,35 +89,7 @@ class UnusedParameterVisitor: SyntaxVisitor {
             }
         }
 
-        let parameters = extractParameters(from: node.signature.parameterClause)
-        guard !parameters.isEmpty else {
-            return .skipChildren
-        }
-
-        let bodyIdentifiers = collectBodyIdentifiers(from: node.body)
-        let functionName = "init"
-
-        for param in parameters {
-            if !bodyIdentifiers.contains(param.name) {
-                let location = param.token.startLocation(converter: sourceLocationConverter)
-                let parentContext: String
-                if let typeName = currentTypeName {
-                    parentContext = "\(typeName).\(functionName)"
-                } else {
-                    parentContext = functionName
-                }
-
-                unusedParameters.append(Declaration(
-                    name: param.name,
-                    type: .parameter,
-                    file: filePath,
-                    line: location.line,
-                    exclusionReason: .none,
-                    parentType: parentContext,
-                    identity: parameterIdentity(name: param.name, token: param.token)
-                ))
-            }
-        }
+        collectUnusedBindings(parameters: node.signature.parameterClause, body: node.body, callableName: "init")
 
         return .skipChildren
     }
@@ -185,6 +147,28 @@ class UnusedParameterVisitor: SyntaxVisitor {
 
     override func visitPost(_ node: ProtocolDeclSyntax) {
         insideProtocol = false
+    }
+
+    private func collectUnusedBindings(
+        parameters parameterClause: FunctionParameterClauseSyntax,
+        body: CodeBlockSyntax?,
+        callableName: String
+    ) {
+        let parameters = extractParameters(from: parameterClause)
+        guard !parameters.isEmpty else { return }
+
+        let bodyIdentifiers = collectBodyIdentifiers(from: body)
+        let parentContext = currentTypeName.map { "\($0).\(callableName)" } ?? callableName
+        for parameter in parameters where !parameter.isReferenced(in: bodyIdentifiers) {
+            let location = parameter.token.startLocation(converter: sourceLocationConverter)
+            unusedParameterBindings.append(UnusedParameterBinding(
+                name: parameter.name,
+                file: filePath,
+                line: location.line,
+                parentType: parentContext,
+                identity: parameterIdentity(name: parameter.name, token: parameter.token)
+            ))
+        }
     }
 
     private func parameterIdentity(name: String, token: TokenSyntax) -> DeclarationIdentity {
@@ -262,7 +246,7 @@ class UnusedParameterVisitor: SyntaxVisitor {
     private func hasSkippableAttribute(attributes: AttributeListSyntax) -> Bool {
         for attribute in attributes {
             if case .attribute(let attr) = attribute {
-                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text ?? ""
+                let attrName = attr.attributeName.as(IdentifierTypeSyntax.self)?.name.identifierName ?? ""
                 if attrName == "objc" || attrName == "IBAction" {
                     return true
                 }
@@ -271,8 +255,8 @@ class UnusedParameterVisitor: SyntaxVisitor {
         return false
     }
 
-    private func extractParameters(from parameterClause: FunctionParameterClauseSyntax) -> [ParameterInfo] {
-        var params: [ParameterInfo] = []
+    private func extractParameters(from parameterClause: FunctionParameterClauseSyntax) -> [ParameterBindingInfo] {
+        var params: [ParameterBindingInfo] = []
 
         for parameter in parameterClause.parameters {
             let name: String
@@ -290,7 +274,9 @@ class UnusedParameterVisitor: SyntaxVisitor {
                 continue
             }
 
-            params.append(ParameterInfo(name: name, token: token))
+            params.append(ParameterBindingInfo(
+                name: name, token: token, hasPotentialWrapperAttribute: !parameter.attributes.isEmpty
+            ))
         }
 
         return params
@@ -298,7 +284,7 @@ class UnusedParameterVisitor: SyntaxVisitor {
 
     private func collectBodyIdentifiers(from body: CodeBlockSyntax?) -> Set<String> {
         guard let body else { return [] }
-        let collector = BodyIdentifierCollector(viewMode: .sourceAccurate)
+        let collector = ParameterBodyReferenceCollector(viewMode: .sourceAccurate)
         collector.walk(body)
         return collector.identifiers
     }
@@ -325,25 +311,5 @@ class UnusedParameterVisitor: SyntaxVisitor {
 
     private func extractProtocols(from inheritanceClause: InheritanceClauseSyntax?) -> Set<String> {
         SwiftTypeName.inheritedNames(inheritanceClause)
-    }
-}
-
-private struct ParameterInfo {
-    let name: String
-    let token: TokenSyntax
-}
-
-private class BodyIdentifierCollector: SyntaxVisitor {
-
-    var identifiers = Set<String>()
-
-    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-        identifiers.insert(node.baseName.identifierName)
-        return .visitChildren
-    }
-
-    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-        identifiers.insert(node.identifier.identifierName)
-        return .visitChildren
     }
 }

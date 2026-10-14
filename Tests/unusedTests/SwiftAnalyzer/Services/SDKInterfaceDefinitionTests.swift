@@ -254,12 +254,18 @@ struct SDKInterfaceDefinitionTests {
     }
 
     @Test
-    func pureParserDoesNotRequireAnSDK() {
+    func pureParserDoesNotRequireAnSDK() async {
         #expect(parser.getModuleInterface(moduleName: "Swift") == nil)
         #expect(parser.getProtocolDefinition(protocolName: "Equatable", inModule: "Swift") == nil)
         #expect(parser.getProtocolRequirements(protocolName: "Equatable", inModule: "Swift") == nil)
         #expect(parser.getProtocolParents(protocolName: "Equatable", inModule: "Swift") == nil)
-        #expect(parser.getExportedSymbols(inModule: "Swift") == nil)
+        let client = SwiftInterfaceClient(moduleInterfaceProvider: { [parser] in
+            parser.getModuleInterface(moduleName: $0)
+        })
+        let inventory = await client.getSymbolInventory(inModule: "Swift")
+        #expect(inventory.symbols.isEmpty)
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties == [.unavailableModule("Swift")])
         #expect(parser.getPropertyWrappers(inModule: "Swift") == nil)
     }
 }

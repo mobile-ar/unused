@@ -5,17 +5,32 @@
 actor SwiftInterfaceClient: Sendable {
     private static let sdkParser = SwiftInterfaceParser()
     private let interfaceCache: SDKInterfaceCache
+    private let symbolInventoryClient: SDKInterfaceSymbolInventoryClient
 
-    init(moduleInterfaceProvider: (@Sendable (String) -> String?)? = nil) {
+    init(
+        moduleInterfaceProvider: (@Sendable (String) -> String?)? = nil,
+        symbolInventoryProvider: (@Sendable (String) -> SDKInterfaceSymbolInventory?)? = nil
+    ) {
+        let cache: SDKInterfaceCache
         if let moduleInterfaceProvider {
-            self.interfaceCache = SDKInterfaceCache(moduleInterfaceProvider: moduleInterfaceProvider)
+            cache = SDKInterfaceCache(moduleInterfaceProvider: moduleInterfaceProvider)
         } else {
-            self.interfaceCache = .shared
+            cache = .shared
         }
+        self.interfaceCache = cache
+        self.symbolInventoryClient = SDKInterfaceSymbolInventoryClient(
+            interfaceCache: cache, inventoryProvider: symbolInventoryProvider
+        )
     }
 
-    init(interfaceCache: SDKInterfaceCache) {
+    init(
+        interfaceCache: SDKInterfaceCache,
+        symbolInventoryProvider: (@Sendable (String) -> SDKInterfaceSymbolInventory?)? = nil
+    ) {
         self.interfaceCache = interfaceCache
+        self.symbolInventoryClient = SDKInterfaceSymbolInventoryClient(
+            interfaceCache: interfaceCache, inventoryProvider: symbolInventoryProvider
+        )
     }
 
     static func loadSDKModuleInterface(_ moduleName: String) -> String? {
@@ -46,8 +61,8 @@ actor SwiftInterfaceClient: Sendable {
         await interfaceCache.wrappers(forModule: moduleName)
     }
 
-    func getExportedSymbols(inModule moduleName: String) async -> Set<String>? {
-        (await interfaceCache.index(forModule: moduleName))?.exportedSymbols
+    func getSymbolInventory(inModule moduleName: String) async -> SDKInterfaceSymbolInventory {
+        await symbolInventoryClient.inventory(inModule: moduleName)
     }
 
     func getAllPropertyWrappers(fromModules moduleNames: Set<String>) async -> Set<String> {

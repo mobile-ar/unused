@@ -27,14 +27,14 @@ struct XcodeFormatter {
         }
     }
 
-    static func display(items: [ReportItem]) {
+    static func display(items: [ReportItem], output: (String) -> Void = { print($0) }) {
         for item in items {
-            printWarning(for: item)
+            printWarning(for: item, output: output)
         }
 
         let count = items.count
         if count > 0 {
-            print("warning: \(count) unused declaration\(count == 1 ? "" : "s") found")
+            output("warning: \(count) unused declaration\(count == 1 ? "" : "s") found")
         }
     }
 
@@ -47,8 +47,11 @@ struct XcodeFormatter {
             message += " in \(parentType)"
         }
 
-        if item.exclusionReason == .writeOnly {
+        if item.isWriteOnly || item.exclusionReason == .writeOnly {
             message += " [write-only]"
+        }
+        if item.type == .parameter {
+            message += "; signature removal is not proven safe; manual review required; keep signature unchanged"
         }
 
         output("\(filePath):\(item.line): warning: \(message)")
@@ -62,7 +65,7 @@ struct XcodeFormatter {
         case .enumCase: return "enum case"
         case .protocol: return "protocol"
         case .typealias: return "typealias"
-        case .parameter: return "parameter"
+        case .parameter: return "local parameter binding"
         case .import: return "import"
         }
     }

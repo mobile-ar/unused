@@ -26,7 +26,7 @@ struct ProgressBarFormatter {
         return " \(prefix) [\(filledBar)\(emptyBar)] \(percentage)% (\(current)/\(total)) \(status)"
     }
 
-    private func formatDuration(_ duration: Duration?, estimated: Bool) -> String {
+    func formatDuration(_ duration: Duration?, estimated: Bool) -> String {
         guard let duration, duration >= .zero else { return "calculating..." }
         guard duration > .zero else { return "0ms" }
         guard duration >= .milliseconds(1) else { return "<1ms" }

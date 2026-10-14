@@ -5,7 +5,18 @@ struct SDKInterfaceIndex: Sendable {
     var aliases: [String: SDKInterfaceAlias] = [:]
     var typeKinds: [String: String] = [:]
     var exportedSymbols: Set<String> = []
+    var importedModules: Set<String> = []
+    var reexportedModules: Set<String> = []
+    var symbolInventoryUncertainties: Set<SDKInterfaceSymbolInventoryUncertainty> = [.unverifiedInterface]
     var propertyWrappers: Set<String> = []
+
+    var symbolInventory: SDKInterfaceSymbolInventory {
+        SDKInterfaceSymbolInventory(
+            symbols: exportedSymbols,
+            reexportedModules: reexportedModules,
+            uncertainties: symbolInventoryUncertainties
+        )
+    }
 
     func protocolDefinition(named name: String) -> ProtocolDefinition? {
         let name = SwiftTypeName.normalized(name)

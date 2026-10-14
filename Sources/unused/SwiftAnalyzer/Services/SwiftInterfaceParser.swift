@@ -63,13 +63,8 @@ final class SwiftInterfaceParser: Sendable {
         }
     }
 
-    func parseExportedSymbols(from moduleInterface: String) -> Set<String> {
-        SDKInterfaceIndex(moduleInterface: moduleInterface).exportedSymbols
-    }
-
-    func getExportedSymbols(inModule moduleName: String) -> Set<String>? {
-        guard let interface = getModuleInterface(moduleName: moduleName) else { return nil }
-        return parseExportedSymbols(from: interface)
+    func parseSymbolInventory(from moduleInterface: String) -> SDKInterfaceSymbolInventory {
+        SDKInterfaceIndex(moduleInterface: moduleInterface).symbolInventory
     }
 
     func parsePropertyWrappers(from moduleInterface: String) -> Set<String> {

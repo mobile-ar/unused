@@ -35,6 +35,11 @@ actor ProgressTracker {
         self.finishLine = finishLine
     }
 
+    func start() {
+        guard !finished, total > 0, current == 0, lastRenderedElapsed == nil else { return }
+        renderProgress(elapsed: max(.zero, elapsed()))
+    }
+
     func increment(total updatedTotal: Int? = nil) {
         guard !finished else { return }
         if let updatedTotal {
@@ -52,7 +57,12 @@ actor ProgressTracker {
     func finish() {
         guard !finished else { return }
         finished = true
-        guard current > 0 else { return }
+        guard current > 0 else {
+            if lastRenderedElapsed != nil {
+                finishLine()
+            }
+            return
+        }
         if lastRenderedCurrent != current {
             renderProgress(elapsed: max(.zero, elapsed()))
         }

@@ -3,6 +3,54 @@ import Testing
 @testable import unused
 
 struct ProgressTrackerTests {
+    @Test func startImmediatelyRendersZeroWithoutInventingCompletedWork() async {
+        let updates = Mutex<[ProgressUpdate]>([])
+        let tracker = ProgressTracker(
+            total: 129, prefix: "Collecting usage...", elapsed: { .seconds(2) },
+            render: { update in updates.withLock { $0.append(update) } }, finishLine: {}
+        )
+        await tracker.start()
+        await tracker.start()
+        #expect(updates.withLock { $0 } == [
+            ProgressUpdate(prefix: "Collecting usage...", current: 0, total: 129, estimatedRemaining: nil, elapsed: .seconds(2))
+        ])
+        #expect(updates.withLock { ProgressBarFormatter().render($0[0]).hasSuffix("0.0% (0/129) ETA: calculating...") })
+        await tracker.finish()
+    }
+
+    @Test func firstCompletionRendersEvenImmediatelyAfterStarting() async {
+        let elapsed = Mutex<Duration>(.zero)
+        let updates = Mutex<[ProgressUpdate]>([])
+        let tracker = ProgressTracker(
+            total: 3, prefix: "Usage", elapsed: { elapsed.withLock { $0 } },
+            render: { update in updates.withLock { $0.append(update) } }, finishLine: {}
+        )
+        await tracker.start()
+        elapsed.withLock { $0 = .milliseconds(10) }
+        await tracker.increment()
+        await tracker.start()
+        #expect(updates.withLock { $0.map(\.current) } == [0, 1])
+        #expect(updates.withLock { $0.last?.estimatedRemaining } == .milliseconds(20))
+        await tracker.finish()
+    }
+
+    @Test func finishingAnInitiallyRenderedPhaseClosesItsLineWithoutClaimingCompletion() async {
+        let updates = Mutex<[ProgressUpdate]>([])
+        let lines = Mutex<Int>(0)
+        let tracker = ProgressTracker(
+            total: 3, prefix: "Usage", render: { update in updates.withLock { $0.append(update) } },
+            finishLine: { lines.withLock { $0 += 1 } }
+        )
+        await tracker.start()
+        await tracker.finish()
+        await tracker.finish()
+        await tracker.start()
+        await tracker.increment()
+        #expect(updates.withLock { $0.map(\.current) } == [0])
+        #expect(updates.withLock { $0.first?.estimatedRemaining } == nil)
+        #expect(lines.withLock { $0 } == 1)
+    }
+
     @Test func calculatesRemainingTimeFromCompletedItemsAndElapsedTime() async {
         let elapsed = Mutex<Duration>(.seconds(4))
         let updates = Mutex<[ProgressUpdate]>([])
@@ -84,8 +132,10 @@ struct ProgressTrackerTests {
             total: total, prefix: "Empty", render: { update in updates.withLock { $0.append(update) } },
             finishLine: { lines.withLock { $0 += 1 } }
         )
+        await tracker.start()
         await tracker.increment()
         await tracker.finish()
+        await tracker.start()
         await tracker.finish()
         #expect(updates.withLock { $0.isEmpty })
         #expect(lines.withLock { $0 } == 0)

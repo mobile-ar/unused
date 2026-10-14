@@ -72,6 +72,16 @@ struct CodeDeleterService {
         var deletedFilePaths: [String] = []
 
         for (filePath, fileRequests) in groupedRequests {
+            if let request = fileRequests.first(where: { $0.item.type == .parameter }) {
+                fileResults.append(FileDeletionResult(
+                    filePath: filePath,
+                    deletedCount: 0,
+                    success: false,
+                    error: ParameterDeletionError(parameterName: request.item.name)
+                ))
+                continue
+            }
+
             var allLinesToDelete = Set<Int>()
             var allPartialDeletions: [PartialLineDeletion] = []
             var fileError: Error?
@@ -217,8 +227,20 @@ struct CodeDeleterService {
 
         for (filePath, fileRequests) in groupedRequests.sorted(by: { $0.key < $1.key }) {
             lines.append("File: \(filePath)")
+            let requiresManualReview = fileRequests.contains { $0.item.type == .parameter }
+            if requiresManualReview {
+                lines.append("  Manual review required; signature unchanged. No changes will be made to this file.")
+            }
             for request in fileRequests.sorted(by: { sortLine(for: $0) < sortLine(for: $1) }) {
                 let item = request.item
+                if requiresManualReview {
+                    if item.type == .parameter {
+                        lines.append("  Line \(item.line): unused local parameter binding '\(item.name)' (manual review; signature removal is not proven safe)")
+                    } else {
+                        lines.append("  Line \(item.line): \(item.type.rawValue) '\(item.name)' (not deleted; file blocked by parameter binding request)")
+                    }
+                    continue
+                }
                 switch request.mode {
                 case .fullDeclaration:
                     lines.append("  Line \(item.line): \(item.type.rawValue) '\(item.name)' (full declaration)")

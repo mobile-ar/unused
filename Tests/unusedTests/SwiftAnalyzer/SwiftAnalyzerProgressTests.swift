@@ -21,6 +21,77 @@ struct SwiftAnalyzerProgressTests {
         try expectReport(result.report, in: directory, unusedNames: ["unusedFirst", "unusedSecond", "unusedThird"])
     }
 
+    @Test func preparationFinishesBeforeTheInitialUsageFrameAndHasIndependentTiming() async throws {
+        let directory = try makeProjectDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try writeSource("struct Subject { var value: Int; func work() { print(value) } }", to: "Subject.swift", in: directory)
+        let origin = ContinuousClock().now
+        let instant = Mutex<ContinuousClock.Instant>(origin)
+        let events = Mutex<[String]>([])
+        let spinner = ConsoleSpinner(
+            showsElapsed: true, interval: .seconds(3_600), now: { instant.withLock { $0 } },
+            interactiveEnabled: { true }, write: { text in
+                events.withLock { $0.append(text) }
+                if text.contains("Preparing usage analysis..."), !text.contains("Done in") {
+                    instant.withLock { $0 = origin.advanced(by: .seconds(12)) }
+                }
+            }
+        )
+        let analyzer = SwiftAnalyzer(
+            directory: directory.path,
+            swiftInterfaceClient: SwiftInterfaceClient(moduleInterfaceProvider: { _ in nil }),
+            usagePreparationSpinnerFactory: { spinner },
+            progressTrackerFactory: { total, prefix in
+                events.withLock { $0.append("Created \(prefix)") }
+                let start = instant.withLock { $0 }
+                return ProgressTracker(
+                    total: total, prefix: prefix,
+                    elapsed: { start.duration(to: instant.withLock { $0 }) }, renderInterval: .zero,
+                    render: { update in
+                        events.withLock { $0.append(ProgressBarFormatter().render(update)) }
+                        if update.prefix == "Collecting usage...", update.current == 0 {
+                            instant.withLock { $0 = $0.advanced(by: .seconds(2)) }
+                        }
+                    },
+                    finishLine: { events.withLock { $0.append("Finished \(prefix)") } }
+                )
+            }
+        )
+        let report = await analyzer.analyzeFiles([file])
+        let output = events.withLock { $0 }
+        let parameterFinish = try #require(output.firstIndex(of: "Finished Checking parameters..."))
+        let preparationStart = try #require(output.firstIndex { $0.contains("Preparing usage analysis...") && !$0.contains("Done in") })
+        let preparationFinish = try #require(output.firstIndex { $0.hasSuffix("Preparing usage analysis... Done in 12s\n") })
+        let usageCreation = try #require(output.firstIndex(of: "Created Collecting usage..."))
+        let initialUsage = try #require(output.firstIndex { $0.contains("Collecting usage...") && $0.hasSuffix("0.0% (0/1) ETA: calculating...") })
+        let completedUsage = try #require(output.firstIndex { $0.contains("Collecting usage...") && $0.hasSuffix("100.0% (1/1) Done in 2s") })
+        #expect(parameterFinish < preparationStart)
+        #expect(preparationStart < preparationFinish)
+        #expect(preparationFinish < usageCreation)
+        #expect(usageCreation < initialUsage)
+        #expect(initialUsage < completedUsage)
+        #expect(output.filter { $0.contains("Preparing usage analysis...") }.count == 2)
+        #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(".unused.json").path))
+        #expect(report.allItems.contains { $0.name == "work" })
+    }
+
+    @Test func emptyInputsNeverCreateAPreparationSpinner() async throws {
+        let directory = try makeProjectDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let created = Mutex<Int>(0)
+        let analyzer = SwiftAnalyzer(
+            directory: directory.path,
+            swiftInterfaceClient: SwiftInterfaceClient(moduleInterfaceProvider: { _ in nil }),
+            usagePreparationSpinnerFactory: {
+                created.withLock { $0 += 1 }
+                return ConsoleSpinner(interactiveEnabled: { false })
+            }
+        )
+        let report = await analyzer.analyzeFiles([])
+        #expect(created.withLock { $0 } == 0)
+        #expect(report.unused.isEmpty)
+    }
+
     @Test func emptyInputDoesNotRenderFramesOrFinishProgressLines() async throws {
         let directory = try makeProjectDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -126,7 +197,10 @@ struct SwiftAnalyzerProgressTests {
     }
 
     private func updates(prefix: String, remainingTimes: [Duration]) -> [ProgressUpdate] {
-        remainingTimes.enumerated().map { index, remaining in
+        let initialUpdates: [ProgressUpdate] = prefix == "Collecting usage..." && !remainingTimes.isEmpty ? [
+            ProgressUpdate(prefix: prefix, current: 0, total: remainingTimes.count, estimatedRemaining: nil, elapsed: .seconds(6))
+        ] : []
+        return initialUpdates + remainingTimes.enumerated().map { index, remaining in
             ProgressUpdate(
                 prefix: prefix,
                 current: index + 1,

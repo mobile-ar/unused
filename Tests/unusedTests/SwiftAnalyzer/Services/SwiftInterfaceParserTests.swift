@@ -404,7 +404,7 @@ struct SwiftInterfaceParserTests {
     }
 
     @Test
-    func testParseExportedSymbolsFindsStructs() {
+    func testParseSymbolInventoryFindsStructs() {
         let moduleInterface = """
         public struct URL {
             public var absoluteString: String { get }
@@ -416,14 +416,16 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("URL"))
         #expect(symbols.contains("Data"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsClasses() {
+    func testParseSymbolInventoryFindsClasses() {
         let moduleInterface = """
         public class NSObject {
             public func description() -> String
@@ -435,14 +437,16 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("NSObject"))
         #expect(symbols.contains("JSONDecoder"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsEnums() {
+    func testParseSymbolInventoryFindsEnums() {
         let moduleInterface = """
         public enum ComparisonResult : Int {
             case orderedAscending
@@ -452,8 +456,10 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("ComparisonResult"))
         #expect(symbols.contains("orderedAscending"))
         #expect(symbols.contains("orderedSame"))
@@ -461,7 +467,7 @@ struct SwiftInterfaceParserTests {
     }
 
     @Test
-    func testParseExportedSymbolsFindsProtocols() {
+    func testParseSymbolInventoryFindsProtocols() {
         let moduleInterface = """
         public protocol Codable : Decodable, Encodable {
         }
@@ -473,14 +479,16 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("Codable"))
         #expect(symbols.contains("Identifiable"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsActors() {
+    func testParseSymbolInventoryFindsActors() {
         let moduleInterface = """
         public actor MyActor {
             public func perform()
@@ -488,55 +496,63 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("MyActor"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsFunctions() {
+    func testParseSymbolInventoryFindsFunctions() {
         let moduleInterface = """
         public func print(_ items: Any...)
         public func abs<T>(_ x: T) -> T where T : Comparable
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("print"))
         #expect(symbols.contains("abs"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsVariables() {
+    func testParseSymbolInventoryFindsVariables() {
         let moduleInterface = """
         public let pi: Double
         public var stderr: UnsafeMutablePointer<FILE>
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("pi"))
         #expect(symbols.contains("stderr"))
     }
 
     @Test
-    func testParseExportedSymbolsFindsTypealiases() {
+    func testParseSymbolInventoryFindsTypealiases() {
         let moduleInterface = """
         public typealias StringLiteralType = String
         public typealias IntegerLiteralType = Int
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("StringLiteralType"))
         #expect(symbols.contains("IntegerLiteralType"))
     }
 
     @Test
-    func testParseExportedSymbolsIgnoresCommentsAndEmptyLines() {
+    func testParseSymbolInventoryIgnoresCommentsAndEmptyLines() {
         let moduleInterface = """
         // This is a comment
         /* Block comment */
@@ -547,27 +563,47 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(inventory.isComplete)
         #expect(symbols.contains("RealType"))
         #expect(!symbols.contains("This"))
         #expect(!symbols.contains("Block"))
     }
 
-    @Test
-    func testParseExportedSymbolsReturnsEmptyForEmptyInterface() {
-        let moduleInterface = """
-        // Only comments here
-        """
-
+    @Test(arguments: ["", "   \n", "// Only comments here", "import ClangOnly"])
+    func testParseSymbolInventoryDoesNotTreatStubsAsComplete(_ moduleInterface: String) {
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
 
-        #expect(symbols.isEmpty)
+        #expect(inventory.symbols.isEmpty)
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties == [.emptyInterface])
     }
 
     @Test
-    func testParseExportedSymbolsComplexInterface() {
+    func testParseSymbolInventoryRetainsKnownSymbolsFromMalformedInterfaces() {
+        let parser = SwiftInterfaceParser(sdkPath: nil)
+        let inventory = parser.parseSymbolInventory(from: "public struct Known {}\npublic struct Broken {")
+
+        #expect(inventory.symbols.contains("Known"))
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties.contains(.recoveredSyntax))
+    }
+
+    @Test
+    func testParseSymbolInventoryPreservesUnresolvedReexports() {
+        let parser = SwiftInterfaceParser(sdkPath: nil)
+        let inventory = parser.parseSymbolInventory(from: "@_exported import Dependency\npublic struct Known {}")
+
+        #expect(inventory.symbols == ["Known"])
+        #expect(inventory.reexportedModules == ["Dependency"])
+        #expect(!inventory.isComplete)
+    }
+
+    @Test
+    func testParseSymbolInventoryComplexInterface() {
         let moduleInterface = """
         import Swift
 
@@ -598,8 +634,11 @@ struct SwiftInterfaceParserTests {
         """
 
         let parser = SwiftInterfaceParser(sdkPath: nil)
-        let symbols = parser.parseExportedSymbols(from: moduleInterface)
+        let inventory = parser.parseSymbolInventory(from: moduleInterface)
+        let symbols = inventory.symbols
 
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties.contains(.attributeExpansion("ViewBuilder")))
         #expect(symbols.contains("State"))
         #expect(symbols.contains("View"))
         #expect(symbols.contains("Text"))
@@ -615,27 +654,31 @@ struct SwiftInterfaceParserTests {
     }
 
     @Test
-    func testGetExportedSymbolsFromSwiftModule() {
-        let parser = SwiftInterfaceParser()!
-        guard let symbols = parser.getExportedSymbols(inModule: "Swift") else {
-            return
-        }
+    func testSymbolInventoryFromInjectedModuleInterface() async {
+        let source = """
+        public struct String {}
+        public struct Int {}
+        public struct Array<Element> {}
+        public struct Dictionary<Key, Value> {}
+        public enum Optional<Wrapped> {}
+        public struct Bool {}
+        public func print(_ items: Any...)
+        """
+        let client = SwiftInterfaceClient(moduleInterfaceProvider: { $0 == "Memory" ? source : nil })
+        let inventory = await client.getSymbolInventory(inModule: "Memory")
 
-        #expect(symbols.contains("String"))
-        #expect(symbols.contains("Int"))
-        #expect(symbols.contains("Array"))
-        #expect(symbols.contains("Dictionary"))
-        #expect(symbols.contains("Optional"))
-        #expect(symbols.contains("Bool"))
-        #expect(symbols.contains("print"))
+        #expect(inventory.isComplete)
+        #expect(inventory.symbols == ["String", "Int", "Array", "Dictionary", "Optional", "Bool", "print"])
     }
 
     @Test
-    func testGetExportedSymbolsFromNonExistentModule() {
-        let parser = SwiftInterfaceParser()!
-        let symbols = parser.getExportedSymbols(inModule: "TotallyFakeModuleThatDoesNotExist")
+    func testSymbolInventoryFromUnavailableModule() async {
+        let client = SwiftInterfaceClient(moduleInterfaceProvider: { _ in nil })
+        let inventory = await client.getSymbolInventory(inModule: "Missing")
 
-        #expect(symbols == nil)
+        #expect(inventory.symbols.isEmpty)
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties == [.unavailableModule("Missing")])
     }
 
 }

@@ -53,6 +53,7 @@ struct Declaration: Sendable {
     let exclusionReason: ExclusionReason
     let parentType: String? // For tracking which class/struct the declaration belongs to
     var identity: DeclarationIdentity? = nil
+    var isWriteOnly: Bool = false
 
     var shouldExcludeByDefault: Bool {
         return exclusionReason != .none

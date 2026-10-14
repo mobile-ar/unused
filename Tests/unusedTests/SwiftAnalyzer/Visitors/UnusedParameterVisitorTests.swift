@@ -25,10 +25,10 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "name")
-        #expect(visitor.unusedParameters[0].type == .parameter)
-        #expect(visitor.unusedParameters[0].parentType == "greet")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "name")
+        #expect(visitor.unusedParameterBindings[0].identity.signature.kind == .parameter)
+        #expect(visitor.unusedParameterBindings[0].parentType == "greet")
     }
 
     @Test
@@ -47,7 +47,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -67,8 +67,8 @@ struct UnusedParameterVisitorTests {
         visitor.walk(sourceFile)
 
         // `_` is just the external label; the internal name `value` is unused
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "value")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "value")
     }
 
     @Test
@@ -88,7 +88,7 @@ struct UnusedParameterVisitorTests {
         visitor.walk(sourceFile)
 
         // The internal name is `_`, so the parameter should be skipped entirely
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -107,8 +107,8 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "b")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "b")
     }
 
     @Test
@@ -127,8 +127,8 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 2)
-        let names = visitor.unusedParameters.map(\.name)
+        #expect(visitor.unusedParameterBindings.count == 2)
+        let names = visitor.unusedParameterBindings.map(\.name)
         #expect(names.contains("x"))
         #expect(names.contains("y"))
     }
@@ -149,7 +149,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -170,7 +170,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -191,7 +191,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -212,7 +212,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -237,7 +237,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -256,7 +256,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -275,7 +275,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -294,7 +294,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -315,9 +315,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "input")
-        #expect(visitor.unusedParameters[0].parentType == "Calculator.compute")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "input")
+        #expect(visitor.unusedParameterBindings[0].parentType == "Calculator.compute")
     }
 
     @Test
@@ -338,9 +338,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "url")
-        #expect(visitor.unusedParameters[0].parentType == "Service.fetch")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "url")
+        #expect(visitor.unusedParameterBindings[0].parentType == "Service.fetch")
     }
 
     @Test
@@ -361,9 +361,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "value")
-        #expect(visitor.unusedParameters[0].parentType == "Utility.format")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "value")
+        #expect(visitor.unusedParameterBindings[0].parentType == "Utility.format")
     }
 
     @Test
@@ -384,9 +384,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "data")
-        #expect(visitor.unusedParameters[0].parentType == "DataStore.save")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "data")
+        #expect(visitor.unusedParameterBindings[0].parentType == "DataStore.save")
     }
 
     @Test
@@ -409,9 +409,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "x")
-        #expect(visitor.unusedParameters[0].parentType == "Foo.bar")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "x")
+        #expect(visitor.unusedParameterBindings[0].parentType == "Foo.bar")
     }
 
     @Test
@@ -430,8 +430,8 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "config")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "config")
     }
 
     @Test
@@ -450,7 +450,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -473,9 +473,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "extra")
-        #expect(visitor.unusedParameters[0].parentType == "Thing.init")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "extra")
+        #expect(visitor.unusedParameterBindings[0].parentType == "Thing.init")
     }
 
     @Test
@@ -500,7 +500,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -521,7 +521,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -546,7 +546,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -569,8 +569,8 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 2)
-        let names = visitor.unusedParameters.map(\.name)
+        #expect(visitor.unusedParameterBindings.count == 2)
+        let names = visitor.unusedParameterBindings.map(\.name)
         #expect(names.contains("a"))
         #expect(names.contains("b"))
     }
@@ -593,7 +593,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -614,7 +614,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -634,7 +634,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -663,9 +663,9 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].name == "data")
-        #expect(visitor.unusedParameters[0].parentType == "MyType.helperMethod")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].name == "data")
+        #expect(visitor.unusedParameterBindings[0].parentType == "MyType.helperMethod")
     }
 
     @Test
@@ -684,7 +684,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -703,7 +703,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -726,7 +726,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -747,7 +747,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -770,8 +770,8 @@ struct UnusedParameterVisitorTests {
         // Actually `_ action: String` has firstName=_ and secondName=action, so the name used is "action"
         // `_ sender: Any` has firstName=_ and secondName=sender, so the name used is "sender"
         // Only "action" and "sender" are not used in the body
-        #expect(visitor.unusedParameters.count == 2)
-        let names = visitor.unusedParameters.map(\.name)
+        #expect(visitor.unusedParameterBindings.count == 2)
+        let names = visitor.unusedParameterBindings.map(\.name)
         #expect(names.contains("action"))
         #expect(names.contains("sender"))
     }
@@ -792,7 +792,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -814,7 +814,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -833,7 +833,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -852,8 +852,8 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.count == 1)
-        #expect(visitor.unusedParameters[0].parentType == "topLevel")
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].parentType == "topLevel")
     }
 
     @Test
@@ -880,7 +880,7 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
     }
 
     @Test
@@ -901,11 +901,124 @@ struct UnusedParameterVisitorTests {
         visitor.walk(sourceFile)
 
         // Conservative approach: "value" appears in body identifiers, so it's considered used
-        #expect(visitor.unusedParameters.isEmpty)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["value", "$value", "_value"])
+    func wrappedFunctionParameterRecognizesAllBindingReferences(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        func process(@Box value: Int) { print(\(reference)) }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["value", "$value", "_value"])
+    func wrappedInitializerParameterRecognizesAllBindingReferences(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        struct Model { init(@Box label value: Int) { print(\(reference)) } }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["`repeat`", "$repeat", "_repeat"])
+    func escapedWrappedParameterNamesAreNormalized(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        func `default`(@Namespace.Box `class` `repeat`: Int) { print(\(reference)) }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["$value", "_value"])
+    func ordinaryParameterDoesNotAcquireWrapperAliases(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        func process(value: Int) { print(\(reference)) }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.map(\.name) == ["value"])
     }
 
     @Test
-    func testDeclarationType() {
+    func wrappedParametersStillDetectUnreferencedBindingsAndSkipUnderscores() {
+        let sourceFile = Parser.parse(source: """
+        func process(@Box used: Int, @Box unused: Int, @Box label _: Int) {
+            let callback = { print($used) }
+            callback()
+        }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.map(\.name) == ["unused"])
+        #expect(visitor.unusedParameters.map(\.name) == ["unused"])
+    }
+
+    @Test(arguments: ["`value`", "value"])
+    func ordinaryEscapedParameterNamesAreNormalized(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        func process(`value`: Int) { consume(\(reference)) }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["`repeat`", "$repeat", "_repeat"])
+    func escapedWrappedInitializerParameterNamesAreNormalized(reference: String) {
+        let sourceFile = Parser.parse(source: """
+        struct Model { init(@Box `class` `repeat`: Int) { consume(\(reference)) } }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["objc", "IBAction"])
+    func escapedRuntimeAttributeNamesStillProtectSignatures(attribute: String) {
+        let sourceFile = Parser.parse(source: """
+        class Model { @`\(attribute)` func callback(_ value: Int) {} }
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.isEmpty)
+    }
+
+    @Test(arguments: ["", "private ", "public "])
+    func unusedBindingDoesNotProveSignatureRemovalIsSafe(access: String) {
+        let sourceFile = Parser.parse(source: """
+        \(access)func process(value: Int = sideEffect()) {}
+        let callback: (Int) -> Void = process
+        process(value: sideEffect())
+        callback(1)
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.map(\.name) == ["value"])
+        #expect(visitor.unusedParameters.map(\.name) == ["value"])
+        #expect(visitor.unusedParameters.allSatisfy { $0.type == .parameter })
+    }
+
+    @Test
+    func initializerBindingDoesNotProveSignatureRemovalIsSafe() {
+        let sourceFile = Parser.parse(source: """
+        struct Model { init(value: Int) {} }
+        let make: (Int) -> Model = Model.init
+        _ = make(sideEffect())
+        """)
+        let visitor = UnusedParameterVisitor(filePath: "File.swift", protocolRequirements: [:], sourceFile: sourceFile)
+        visitor.walk(sourceFile)
+        #expect(visitor.unusedParameterBindings.map(\.name) == ["value"])
+        #expect(visitor.unusedParameters.map(\.name) == ["value"])
+        #expect(visitor.unusedParameters.allSatisfy { $0.type == .parameter })
+    }
+
+    @Test
+    func testBindingFindingRetainsParameterReportCategory() {
         let source = """
         func example(unused: Int) {
             print("nothing")
@@ -920,9 +1033,12 @@ struct UnusedParameterVisitorTests {
         )
         visitor.walk(sourceFile)
 
+        #expect(visitor.unusedParameterBindings.count == 1)
+        #expect(visitor.unusedParameterBindings[0].identity.signature.kind == .parameter)
+        #expect(visitor.unusedParameterBindings[0].file == "/test/file.swift")
         #expect(visitor.unusedParameters.count == 1)
         #expect(visitor.unusedParameters[0].type == .parameter)
         #expect(visitor.unusedParameters[0].exclusionReason == .none)
-        #expect(visitor.unusedParameters[0].file == "/test/file.swift")
+        #expect(visitor.unusedParameters[0].name == "unused")
     }
 }

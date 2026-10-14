@@ -23,7 +23,7 @@ struct SDKInterfaceSymbolTests {
     }
 
     @Test
-    func ignoresDeclarationTextInCommentsStringsAndExecutableBodies() {
+    func parseSymbolInventoryIgnoresDeclarationTextInCommentsStringsAndExecutableBodies() {
         let source = #"""
         /*
         public protocol Fake { func fake() }
@@ -44,13 +44,15 @@ struct SDKInterfaceSymbolTests {
             }
         }
         """#
-        #expect(parser.parseExportedSymbols(from: source) == ["text", "exported", "Real", "property"])
+        let inventory = parser.parseSymbolInventory(from: source)
+        #expect(inventory.isComplete)
+        #expect(inventory.symbols == ["text", "exported", "Real", "property"])
         #expect(parser.parsePropertyWrappers(from: source).isEmpty)
         #expect(parser.parseProtocolDefinition(protocolName: "Fake", from: source) == nil)
     }
 
     @Test
-    func exportsAllEnumCasesBindingsAndConditionalMembers() {
+    func parseSymbolInventoryIncludesAllEnumCasesBindingsAndConditionalMembers() {
         let source = """
         public enum Choice { case first, second(Int), `default` }
         public let firstValue: Int, secondValue: String
@@ -64,7 +66,9 @@ struct SDKInterfaceSymbolTests {
         }
         public extension Outer { typealias Alias = Int }
         """
-        #expect(parser.parseExportedSymbols(from: source) == [
+        let inventory = parser.parseSymbolInventory(from: source)
+        #expect(inventory.isComplete)
+        #expect(inventory.symbols == [
             "Choice", "first", "second", "default", "firstValue", "secondValue",
             "Outer", "Nested", "firstMethod", "otherProperty", "Alias"
         ])

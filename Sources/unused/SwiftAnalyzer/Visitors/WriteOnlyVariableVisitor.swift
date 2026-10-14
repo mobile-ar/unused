@@ -23,8 +23,6 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
     private(set) var propertyReads: Set<PropertyInfo> = []
     private(set) var propertyWrites: Set<PropertyInfo> = []
 
-    private var insideAssignmentLHS: Bool = false
-
     init(
         filePath: String,
         typeProperties: [String: [PropertyInfo]],
@@ -550,10 +548,13 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
 
         for (index, element) in elements.enumerated() {
             if element.is(AssignmentExprSyntax.self) {
-                for i in 0..<index {
-                    insideAssignmentLHS = true
-                    walk(elements[i])
-                    insideAssignmentLHS = false
+                if index == 1 {
+                    walkAssignmentDestination(elements[0])
+                } else {
+                    // An unrecognized destination is evidence of uncertain reads, not writes.
+                    for element in elements[..<index] {
+                        walk(element)
+                    }
                 }
 
                 for i in (index + 1)..<elements.count {
@@ -569,15 +570,40 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
 
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         if node.operator.is(AssignmentExprSyntax.self) {
-            insideAssignmentLHS = true
-            walk(node.leftOperand)
-            insideAssignmentLHS = false
+            walkAssignmentDestination(node.leftOperand)
 
             walk(node.rightOperand)
 
             return .skipChildren
         }
         return .visitChildren
+    }
+
+    private func walkAssignmentDestination(_ expression: ExprSyntax) {
+        if let reference = expression.as(DeclReferenceExprSyntax.self) {
+            let name = reference.baseName.identifierName
+            if name != "self", !isLocalVariable(name) {
+                recordPropertyUsage(name: name, isWrite: true)
+            }
+        } else if let member = expression.as(MemberAccessExprSyntax.self) {
+            let name = member.declName.baseName.identifierName
+            if let base = member.base?.as(DeclReferenceExprSyntax.self), base.baseName.identifierName == "self" {
+                recordPropertyUsage(name: name, isWrite: true)
+            } else {
+                // The destination member is written, but locating its receiver evaluates reads.
+                if let base = member.base {
+                    walk(base)
+                }
+            }
+        } else if let tuple = expression.as(TupleExprSyntax.self) {
+            for element in tuple.elements {
+                walkAssignmentDestination(element.expression)
+            }
+        } else {
+            // Subscripts and other indirect destinations evaluate their receivers and
+            // arguments. Conservatively retain storage involved in read/modify/write access.
+            walk(expression)
+        }
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
@@ -591,7 +617,7 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
             return .visitChildren
         }
 
-        recordPropertyUsage(name: name, isWrite: insideAssignmentLHS)
+        recordPropertyUsage(name: name, isWrite: false)
 
         return .visitChildren
     }
@@ -599,19 +625,11 @@ class WriteOnlyVariableVisitor: SyntaxVisitor {
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
         let propertyName = node.declName.baseName.identifierName
 
-        if let base = node.base?.as(DeclReferenceExprSyntax.self) {
-            if base.baseName.identifierName == "self" {
-                recordPropertyUsage(name: propertyName, isWrite: insideAssignmentLHS)
-                return .skipChildren
-            } else {
-                if !insideAssignmentLHS {
-                    recordExternalPropertyRead(name: propertyName)
-                }
-            }
+        if let base = node.base?.as(DeclReferenceExprSyntax.self), base.baseName.identifierName == "self" {
+            recordPropertyUsage(name: propertyName, isWrite: false)
+            return .skipChildren
         } else if node.base != nil {
-            if !insideAssignmentLHS {
-                recordExternalPropertyRead(name: propertyName)
-            }
+            recordExternalPropertyRead(name: propertyName)
         }
         return .visitChildren
     }

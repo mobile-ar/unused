@@ -14,6 +14,7 @@ struct ReportItem: Codable, Equatable, Hashable {
     let exclusionReason: ExclusionReason
     let parentType: String?
     var identity: DeclarationIdentity? = nil
+    var isWriteOnly: Bool = false
 
     var declaration: Declaration {
         Declaration(
@@ -23,7 +24,8 @@ struct ReportItem: Codable, Equatable, Hashable {
             line: line,
             exclusionReason: exclusionReason,
             parentType: parentType,
-            identity: identity
+            identity: identity,
+            isWriteOnly: isWriteOnly
         )
     }
 }
@@ -38,6 +40,7 @@ extension ReportItem {
         self.exclusionReason = declaration.exclusionReason
         self.parentType = declaration.parentType
         self.identity = declaration.identity
+        self.isWriteOnly = declaration.isWriteOnly || declaration.exclusionReason == .writeOnly
     }
 }
 

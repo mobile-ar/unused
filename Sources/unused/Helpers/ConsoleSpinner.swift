@@ -12,11 +12,33 @@ protocol ConsoleSpinnerProtocol: Sendable {
 actor ConsoleSpinner: ConsoleSpinnerProtocol {
 
     private let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    private let interval: Duration = .milliseconds(50)
+    private let interval: Duration
+    private let showsElapsed: Bool
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private let interactiveEnabled: @Sendable () -> Bool
+    private let write: @Sendable (String) -> Void
+    private var startTime: ContinuousClock.Instant?
     private var currentFrame = 0
     private var animationTask: Task<Void, Never>?
     private var message = ""
     private(set) var isRunning = false
+
+    init(
+        showsElapsed: Bool = false,
+        interval: Duration = .milliseconds(50),
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock().now },
+        interactiveEnabled: @escaping @Sendable () -> Bool = { OutputConfig.interactiveEnabled },
+        write: @escaping @Sendable (String) -> Void = {
+            print($0, terminator: "")
+            fflush(stdout)
+        }
+    ) {
+        self.showsElapsed = showsElapsed
+        self.interval = max(.milliseconds(1), interval)
+        self.now = now
+        self.interactiveEnabled = interactiveEnabled
+        self.write = write
+    }
 
     func start(message: String) async {
         guard !isRunning else { return }
@@ -24,17 +46,20 @@ actor ConsoleSpinner: ConsoleSpinnerProtocol {
         self.message = message
         self.isRunning = true
         self.currentFrame = 0
+        self.startTime = now()
 
-        guard OutputConfig.interactiveEnabled else { return }
+        guard interactiveEnabled() else { return }
 
-        animationTask = Task {
+        renderFrame()
+        animationTask = Task { [weak self, interval] in
             while !Task.isCancelled {
-                self.renderFrame()
                 do {
-                    try await Task.sleep(for: self.interval)
+                    try await Task.sleep(for: interval)
                 } catch {
-                    break
+                    return
                 }
+                guard !Task.isCancelled else { return }
+                await self?.renderFrame()
             }
         }
     }
@@ -48,24 +73,24 @@ actor ConsoleSpinner: ConsoleSpinnerProtocol {
         animationTask = nil
         isRunning = false
 
-        guard OutputConfig.interactiveEnabled else { return }
+        guard interactiveEnabled() else { return }
 
-        clearLine()
         let symbol = success ? "✓".green : "✗".red
-        print("\(symbol) \(message)")
-        fflush(stdout)
+        let timing: String
+        if showsElapsed, let startTime {
+            let elapsed = max(.zero, startTime.duration(to: now()))
+            timing = " Done in \(ProgressBarFormatter().formatDuration(elapsed, estimated: false))"
+        } else {
+            timing = ""
+        }
+        write("\r\u{1B}[K\(symbol) \(message)\(timing)\n")
     }
 
     private func renderFrame() {
+        guard isRunning else { return }
         let frame = frames[currentFrame]
-        print("\r\u{1B}[K\(frame.teal) \(message)", terminator: "")
-        fflush(stdout)
+        write("\r\u{1B}[K\(frame.teal) \(message)")
         currentFrame = (currentFrame + 1) % frames.count
-    }
-
-    private func clearLine() {
-        print("\r\u{1B}[K", terminator: "")
-        fflush(stdout)
     }
 
 }

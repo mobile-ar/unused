@@ -33,7 +33,9 @@ struct SwiftInterfaceClientTests {
         #expect(await client.getTypeKind(typeName: "Memory.Child", inModule: "Memory") == "protocol")
         #expect(await client.getTypeKind(typeName: "Other.Wrapper", inModule: "Memory") == nil)
         #expect(await client.getPropertyWrappers(inModule: "Memory") == ["Wrapper"])
-        #expect(await client.getExportedSymbols(inModule: "Memory") == [
+        let inventory = await client.getSymbolInventory(inModule: "Memory")
+        #expect(inventory.isComplete)
+        #expect(inventory.symbols == [
             "Parent", "parent", "Child", "child", "Empty", "Partial", "Wrapper", "wrappedValue"
         ])
         #expect(loads.withLock { $0 } == ["Memory": 1])
@@ -119,7 +121,10 @@ struct SwiftInterfaceClientTests {
         #expect(await client.getProtocolDefinition(protocolName: "P", inModule: "Missing") == nil)
         #expect(await client.getProtocolRequirements(protocolName: "P", inModule: "Missing") == nil)
         #expect(await client.getProtocolParents(protocolName: "P", inModule: "Missing") == nil)
-        #expect(await client.getExportedSymbols(inModule: "Missing") == nil)
+        let inventory = await client.getSymbolInventory(inModule: "Missing")
+        #expect(inventory.symbols.isEmpty)
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties == [.unavailableModule("Missing")])
         #expect(await client.getPropertyWrappers(inModule: "Missing") == nil)
         #expect(await client.getTypeKind(typeName: "String", inModule: "Missing") == nil)
         #expect(loads.withLock { $0 } == 1)
@@ -155,7 +160,10 @@ struct SwiftInterfaceClientTests {
         let client = SwiftInterfaceClient(moduleInterfaceProvider: { sources[$0] })
         #expect(await client.getAllPropertyWrappers(fromModules: ["First", "Second", "Missing", "Empty"]) == ["One", "Two"])
         #expect(await client.getPropertyWrappers(inModule: "Empty") == [])
-        #expect(await client.getExportedSymbols(inModule: "Empty") == [])
+        let inventory = await client.getSymbolInventory(inModule: "Empty")
+        #expect(inventory.symbols.isEmpty)
+        #expect(!inventory.isComplete)
+        #expect(inventory.uncertainties == [.emptyInterface])
         #expect(await client.getProtocolDefinition(protocolName: "P", inModule: "Empty") == nil)
         #expect(await client.getProtocolDefinition(protocolName: "One", inModule: "First") == nil)
     }
