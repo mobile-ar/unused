@@ -40,12 +40,7 @@ struct ReportService {
     }
 
     static func display(report: Report, output: (String) -> Void = { print($0) }) {
-        if !report.warnings.isEmpty {
-            output("")
-        }
-        for warning in report.warnings {
-            output("Warning: \(warning)".yellow)
-        }
+
         let unusedItems = report.unused
         let excludedOverrideItems = report.excluded.overrides
         let excludedProtocolItems = report.excluded.protocolImplementations
